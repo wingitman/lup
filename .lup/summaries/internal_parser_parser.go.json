@@ -1,61 +1,287 @@
 {
   "file": "internal/parser/parser.go",
-  "summarised_at": "2026-04-30T22:08:39.257657011Z",
-  "file_summary": "This file provides functions to parse source code files and extract symbols using tree-sitter or plain text chunking.",
-  "functions": [
+  "summarised_at": "2026-04-30T23:20:49.404955411Z",
+  "file_summary": "This file implements a parser for detecting and processing programming language symbols from source files.",
+  "symbols": [
     {
-      "name": "init",
-      "kind": "function",
-      "signature": "func init() {",
-      "summary": "Initializes the language registry with supported languages and their query patterns."
+      "name": "symbolStoplist",
+      "kind": "variable",
+      "signature": "var symbolStoplist = map[string]bool{",
+      "summary": "A set of common variable names that should be ignored during symbol detection.",
+      "start_line": 22,
+      "end_line": 32,
+      "occurrence_count": 1
     },
     {
-      "name": "ParseFile",
-      "kind": "function",
-      "signature": "func ParseFile(path string) (*File, error) {",
-      "summary": "Parses a source code file from disk and extracts its symbols."
+      "name": "registry",
+      "kind": "variable",
+      "signature": "var registry map[string]langDef",
+      "summary": "Maps file extensions to language definitions used for parsing.",
+      "start_line": 78,
+      "end_line": 78,
+      "occurrence_count": 1
     },
     {
-      "name": "ParseBytes",
-      "kind": "function",
-      "signature": "func ParseBytes(path string, src []byte) (*File, error) {",
-      "summary": "Parses source code bytes and extracts symbols using tree-sitter or plain text chunking."
+      "name": "plainTextNames",
+      "kind": "variable",
+      "signature": "var plainTextNames = map[string]bool{",
+      "summary": "A set of filenames that are considered plain text files.",
+      "start_line": 323,
+      "end_line": 326,
+      "occurrence_count": 1
     },
     {
-      "name": "SupportedExtensions",
-      "kind": "function",
-      "signature": "func SupportedExtensions() []string {",
-      "summary": "Returns a list of supported file extensions for parsing."
+      "name": "plainTextExts",
+      "kind": "variable",
+      "signature": "var plainTextExts = map[string]bool{",
+      "summary": "A set of file extensions that are considered plain text files.",
+      "start_line": 328,
+      "end_line": 332,
+      "occurrence_count": 1
     },
     {
-      "name": "detectLang",
-      "kind": "function",
-      "signature": "func detectLang(path string) (langDef, string, bool) {",
-      "summary": "Detects the language of a file based on its extension."
+      "name": "raw",
+      "kind": "variable",
+      "signature": "var raw []rawEntry",
+      "summary": "A list of raw entries extracted from the source file.",
+      "start_line": 369,
+      "end_line": 369,
+      "occurrence_count": 1
     },
     {
-      "name": "isPlainText",
-      "kind": "function",
-      "signature": "func isPlainText(path string) (string, bool) {",
-      "summary": "Checks if a file should be treated as plain text for chunking."
+      "name": "nameNode",
+      "kind": "variable",
+      "signature": "var nameNode, bodyNode *sitter.Node",
+      "summary": "Represents the syntax tree node for a symbol's name and body.",
+      "start_line": 395,
+      "end_line": 395,
+      "occurrence_count": 1,
+      "references": [
+        "sitter"
+      ]
     },
     {
-      "name": "extractSymbols",
-      "kind": "function",
-      "signature": "func extractSymbols(root *sitter.Node, src []byte, def langDef) []Symbol {",
-      "summary": "Extracts symbols from a tree-sitter parse tree using language-specific queries."
+      "name": "bodyNode",
+      "kind": "variable",
+      "signature": "var nameNode, bodyNode *sitter.Node",
+      "summary": "Represents the syntax tree node for a symbol's name and body.",
+      "start_line": 395,
+      "end_line": 395,
+      "occurrence_count": 1,
+      "references": [
+        "sitter"
+      ]
     },
     {
-      "name": "firstLine",
-      "kind": "function",
-      "signature": "func firstLine(s string) string {",
-      "summary": "Returns the first non-empty line of a string, truncated to 200 characters if necessary."
+      "name": "symbols",
+      "kind": "variable",
+      "signature": "var symbols []Symbol",
+      "summary": "A list of detected symbols from the source file.",
+      "start_line": 468,
+      "end_line": 468,
+      "occurrence_count": 2
     },
     {
-      "name": "chunkPlainText",
-      "kind": "function",
-      "signature": "func chunkPlainText(src []byte) []Symbol {",
-      "summary": "Chunks plain text into symbols by splitting it into lines and creating chunks of a fixed size."
+      "name": "chunkSize",
+      "kind": "constant",
+      "signature": "const chunkSize = 40",
+      "summary": "Defines the size of chunks used for processing large files.",
+      "start_line": 528,
+      "end_line": 528,
+      "occurrence_count": 1
+    },
+    {
+      "name": "overlap",
+      "kind": "constant",
+      "signature": "const overlap = 5",
+      "summary": "Defines the amount of overlap between chunks when processing large files.",
+      "start_line": 529,
+      "end_line": 529,
+      "occurrence_count": 1
+    },
+    {
+      "name": "src",
+      "kind": "variable",
+      "signature": "src, err := os.ReadFile(path)",
+      "summary": "Reads the contents of a file into memory for parsing.",
+      "start_line": 277,
+      "end_line": 277,
+      "occurrence_count": 1,
+      "references": [
+        "os",
+        "path"
+      ]
+    },
+    {
+      "name": "lang",
+      "kind": "variable",
+      "signature": "lang, langName, ok := detectLang(path)",
+      "summary": "Detects the programming language of a file based on its path and extension.",
+      "start_line": 287,
+      "end_line": 287,
+      "occurrence_count": 1,
+      "references": [
+        "detectLang",
+        "path"
+      ]
+    },
+    {
+      "name": "langName",
+      "kind": "variable",
+      "signature": "lang, langName, ok := detectLang(path)",
+      "summary": "The name of the detected programming language for a file.",
+      "start_line": 287,
+      "end_line": 287,
+      "occurrence_count": 2
+    },
+    {
+      "name": "tree",
+      "kind": "variable",
+      "signature": "tree, err := p.ParseCtx(context.Background(), nil, src)",
+      "summary": "Parses the source code into a syntax tree using the Sitter library.",
+      "start_line": 290,
+      "end_line": 290,
+      "occurrence_count": 1,
+      "references": [
+        "p",
+        "context"
+      ]
+    },
+    {
+      "name": "ext",
+      "kind": "variable",
+      "signature": "ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), \".\")",
+      "summary": "Extracts and normalizes the file extension from a path.",
+      "start_line": 339,
+      "end_line": 339,
+      "occurrence_count": 2,
+      "references": [
+        "strings",
+        "filepath",
+        "path"
+      ]
+    },
+    {
+      "name": "def",
+      "kind": "variable",
+      "signature": "def, ok := registry[ext]",
+      "summary": "Looks up the language definition for a given file extension.",
+      "start_line": 340,
+      "end_line": 340,
+      "occurrence_count": 1,
+      "references": [
+        "registry",
+        "ext"
+      ]
+    },
+    {
+      "name": "base",
+      "kind": "variable",
+      "signature": "base := strings.ToLower(filepath.Base(path))",
+      "summary": "Extracts and normalizes the base name of a file from its path.",
+      "start_line": 345,
+      "end_line": 345,
+      "occurrence_count": 1,
+      "references": [
+        "strings",
+        "filepath",
+        "path"
+      ]
+    },
+    {
+      "name": "highPriority",
+      "kind": "variable",
+      "signature": "highPriority := map[string]bool{}",
+      "summary": "A set of high-priority symbol names that should be processed first.",
+      "start_line": 374,
+      "end_line": 374,
+      "occurrence_count": 1
+    },
+    {
+      "name": "highKinds",
+      "kind": "variable",
+      "signature": "highKinds := map[string]bool{",
+      "summary": "A set of high-priority symbol kinds that should be processed first.",
+      "start_line": 375,
+      "end_line": 378,
+      "occurrence_count": 1
+    },
+    {
+      "name": "tsQuery",
+      "kind": "variable",
+      "signature": "tsQuery, err := sitter.NewQuery([]byte(q.pattern), def.lang)",
+      "summary": "Creates a new Tree-sitter query for extracting symbols from the syntax tree.",
+      "start_line": 381,
+      "end_line": 381,
+      "occurrence_count": 1,
+      "references": [
+        "sitter",
+        "q",
+        "def"
+      ]
+    },
+    {
+      "name": "cursor",
+      "kind": "variable",
+      "signature": "cursor := sitter.NewQueryCursor()",
+      "summary": "Creates a new Tree-sitter query cursor for iterating over matches.",
+      "start_line": 386,
+      "end_line": 386,
+      "occurrence_count": 1,
+      "references": [
+        "sitter"
+      ]
+    },
+    {
+      "name": "match",
+      "kind": "variable",
+      "signature": "match, ok := cursor.NextMatch()",
+      "summary": "Retrieves the next match from the query cursor.",
+      "start_line": 390,
+      "end_line": 390,
+      "occurrence_count": 1,
+      "references": [
+        "cursor"
+      ]
+    },
+    {
+      "name": "capName",
+      "kind": "variable",
+      "signature": "capName := tsQuery.CaptureNameForId(capture.Index)",
+      "summary": "Gets the capture name for a given capture index in the query.",
+      "start_line": 397,
+      "end_line": 397,
+      "occurrence_count": 1,
+      "references": [
+        "tsQuery",
+        "capture"
+      ]
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "signature": "name := nameNode.Content(src)",
+      "summary": "Extracts the content of a symbol's name from the source code.",
+      "start_line": 409,
+      "end_line": 409,
+      "occurrence_count": 1,
+      "references": [
+        "nameNode",
+        "src"
+      ]
+    },
+    {
+      "name": "body",
+      "kind": "variable",
+      "signature": "body := bodyNode.Content(src)",
+      "summary": "Extracts the content of a symbol's body from the source code.",
+      "start_line": 423,
+      "end_line": 423,
+      "occurrence_count": 2,
+      "references": [
+        "bodyNode",
+        "src"
+      ]
     }
   ]
 }

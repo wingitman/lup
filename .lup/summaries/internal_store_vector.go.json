@@ -1,0 +1,308 @@
+{
+  "file": "internal/store/vector.go",
+  "summarised_at": "2026-04-30T23:22:49.173411094Z",
+  "file_summary": "This file defines the VectorStore struct and related methods for managing a SQLite database with vector embeddings, including symbol registry and reference mapping.",
+  "symbols": [
+    {
+      "name": "dimStr",
+      "kind": "variable",
+      "signature": "var dimStr string",
+      "summary": "String representation of the embedding dimension; used to store and retrieve the dimension value.",
+      "start_line": 99,
+      "end_line": 99,
+      "occurrence_count": 1
+    },
+    {
+      "name": "d",
+      "kind": "variable",
+      "signature": "var d int",
+      "summary": "Integer representing the embedding dimension; used in various methods to ensure consistency.",
+      "start_line": 101,
+      "end_line": 101,
+      "occurrence_count": 1
+    },
+    {
+      "name": "rowCount",
+      "kind": "variable",
+      "signature": "var rowCount int",
+      "summary": "Counts the number of rows affected by a database operation; used in UpsertSymbol method.",
+      "start_line": 234,
+      "end_line": 234,
+      "occurrence_count": 1
+    },
+    {
+      "name": "results",
+      "kind": "variable",
+      "signature": "var results []SearchResult",
+      "summary": "Holds search results; used to store and process search outcomes across different scopes.",
+      "start_line": 260,
+      "end_line": 260,
+      "occurrence_count": 3,
+      "references": [
+        "SearchResult"
+      ]
+    },
+    {
+      "name": "ids",
+      "kind": "variable",
+      "signature": "var ids []int64",
+      "summary": "Array of IDs; used to store multiple IDs retrieved from the database.",
+      "start_line": 344,
+      "end_line": 344,
+      "occurrence_count": 1
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "signature": "var id int64",
+      "summary": "Single ID value; used to store a specific ID retrieved from the database.",
+      "start_line": 346,
+      "end_line": 346,
+      "occurrence_count": 1
+    },
+    {
+      "name": "dir",
+      "kind": "variable",
+      "signature": "dir := filepath.Join(projectRoot, \".lup\")",
+      "summary": "Directory path for the vector store; constructed using the project root.",
+      "start_line": 29,
+      "end_line": 29,
+      "occurrence_count": 1,
+      "references": [
+        "filepath",
+        "projectRoot"
+      ]
+    },
+    {
+      "name": "path",
+      "kind": "variable",
+      "signature": "path := filepath.Join(dir, \"index.db\")",
+      "summary": "File path for the SQLite database; constructed using the directory path.",
+      "start_line": 34,
+      "end_line": 34,
+      "occurrence_count": 1,
+      "references": [
+        "filepath",
+        "dir"
+      ]
+    },
+    {
+      "name": "db",
+      "kind": "variable",
+      "signature": "db, err := sql.Open(\"sqlite3\", path)",
+      "summary": "SQLite database connection; opened using the constructed file path.",
+      "start_line": 37,
+      "end_line": 37,
+      "occurrence_count": 1,
+      "references": [
+        "sql",
+        "path"
+      ]
+    },
+    {
+      "name": "vs",
+      "kind": "variable",
+      "signature": "vs := \u0026VectorStore{db: db}",
+      "summary": "Instance of VectorStore; initialized with the SQLite database connection.",
+      "start_line": 43,
+      "end_line": 43,
+      "occurrence_count": 1,
+      "references": [
+        "VectorStore",
+        "db"
+      ]
+    },
+    {
+      "name": "tx",
+      "kind": "variable",
+      "signature": "tx, err := vs.db.Begin()",
+      "summary": "Database transaction; initiated for atomic operations across multiple scopes.",
+      "start_line": 140,
+      "end_line": 140,
+      "occurrence_count": 4,
+      "references": [
+        "vs",
+        "sql"
+      ]
+    },
+    {
+      "name": "rowID",
+      "kind": "variable",
+      "signature": "rowID, err := res.LastInsertId()",
+      "summary": "Last inserted row ID; retrieved from the result of a database execution.",
+      "start_line": 158,
+      "end_line": 158,
+      "occurrence_count": 1,
+      "references": [
+        "res"
+      ]
+    },
+    {
+      "name": "err2",
+      "kind": "variable",
+      "signature": "err2 := tx.QueryRow(`SELECT id FROM lup_symbols WHERE file_path=? AND symbol_name=? AND start_line=?`, filePath, symbolName, startLine,).Scan(\u0026rowID)",
+      "summary": "Error variable for QueryRow operation; used to handle potential errors during row retrieval.",
+      "start_line": 160,
+      "end_line": 163,
+      "occurrence_count": 1,
+      "references": [
+        "tx",
+        "filePath",
+        "symbolName",
+        "startLine"
+      ]
+    },
+    {
+      "name": "blob",
+      "kind": "variable",
+      "signature": "blob := serializeFloat32(embedding)",
+      "summary": "Serialized embedding data; converted from a float32 array to bytes.",
+      "start_line": 168,
+      "end_line": 168,
+      "occurrence_count": 2,
+      "references": [
+        "serializeFloat32",
+        "embedding"
+      ]
+    },
+    {
+      "name": "VectorStore",
+      "kind": "struct",
+      "signature": "type VectorStore struct {",
+      "summary": "Represents the vector store with an SQLite database and embedding dimension.",
+      "start_line": 21,
+      "end_line": 24,
+      "occurrence_count": 1
+    },
+    {
+      "name": "Reference",
+      "kind": "struct",
+      "signature": "type Reference struct {",
+      "summary": "Represents a reference from one symbol to another, used for mapping dependencies.",
+      "start_line": 203,
+      "end_line": 206,
+      "occurrence_count": 1
+    },
+    {
+      "name": "SearchResult",
+      "kind": "struct",
+      "signature": "type SearchResult struct {",
+      "summary": "Represents the result of a search operation, including file path, symbol details, and distance.",
+      "start_line": 213,
+      "end_line": 220,
+      "occurrence_count": 1
+    },
+    {
+      "name": "init",
+      "kind": "function",
+      "signature": "func init() {",
+      "summary": "Initializes SQLite vector extension; called once during program initialization.",
+      "start_line": 15,
+      "end_line": 17,
+      "occurrence_count": 1,
+      "references": [
+        "sqlite_vec"
+      ]
+    },
+    {
+      "name": "OpenVectorStore",
+      "kind": "function",
+      "signature": "func OpenVectorStore(projectRoot string) (*VectorStore, error) {",
+      "summary": "Opens a VectorStore by creating necessary directories and initializing the SQLite database.",
+      "start_line": 28,
+      "end_line": 49,
+      "occurrence_count": 1,
+      "references": [
+        "filepath",
+        "os",
+        "sql",
+        "fmt"
+      ]
+    },
+    {
+      "name": "serializeFloat32",
+      "kind": "function",
+      "signature": "func serializeFloat32(v []float32) []byte {",
+      "summary": "Serializes a float32 array into bytes; used for storing embeddings in the database.",
+      "start_line": 378,
+      "end_line": 384,
+      "occurrence_count": 1,
+      "references": [
+        "binary",
+        "math"
+      ]
+    },
+    {
+      "name": "Close",
+      "kind": "method",
+      "signature": "func (vs *VectorStore) Close() error {",
+      "summary": "Closes the SQLite database connection; used to clean up resources.",
+      "start_line": 52,
+      "end_line": 54,
+      "occurrence_count": 1,
+      "references": [
+        "vs"
+      ]
+    },
+    {
+      "name": "migrate",
+      "kind": "method",
+      "signature": "func (vs *VectorStore) migrate() error {",
+      "summary": "Migrates the SQLite database schema to ensure necessary tables exist; handles metadata, symbol registry, and reference mapping.",
+      "start_line": 60,
+      "end_line": 109,
+      "occurrence_count": 1,
+      "references": [
+        "vs",
+        "fmt"
+      ]
+    },
+    {
+      "name": "ensureVecTable",
+      "kind": "method",
+      "signature": "func (vs *VectorStore) ensureVecTable() error {",
+      "summary": "Ensures the vector table exists with the correct dimension; creates the table if necessary.",
+      "start_line": 111,
+      "end_line": 123,
+      "occurrence_count": 1,
+      "references": [
+        "vs",
+        "fmt"
+      ]
+    },
+    {
+      "name": "UpsertSymbol",
+      "kind": "method",
+      "signature": "func (vs *VectorStore) UpsertSymbol(",
+      "summary": "Upserts a symbol into the database, handling both insertion and updates; manages embeddings and references.",
+      "start_line": 131,
+      "end_line": 175,
+      "occurrence_count": 1,
+      "references": [
+        "vs",
+        "tx",
+        "filePath",
+        "symbolName",
+        "symbolKind",
+        "startLine",
+        "endLine",
+        "embedding"
+      ]
+    },
+    {
+      "name": "ReplaceReferences",
+      "kind": "method",
+      "signature": "func (vs *VectorStore) ReplaceReferences(filePath string, refs []Reference) error {",
+      "summary": "Replaces references for a given file path; deletes existing references and inserts new ones.",
+      "start_line": 179,
+      "end_line": 200,
+      "occurrence_count": 1,
+      "references": [
+        "vs",
+        "tx",
+        "filePath",
+        "refs"
+      ]
+    }
+  ]
+}

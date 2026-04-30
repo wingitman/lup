@@ -1,0 +1,61 @@
+{
+  "file": "README.md",
+  "summarised_at": "2026-04-30T23:17:40.840863061Z",
+  "file_summary": "README.md provides an overview of 'lup', an AI-powered code documentation tool, explaining its functionality, installation methods, configuration options, supported languages, and editor integrations.",
+  "symbols": [
+    {
+      "name": "lines_1_40",
+      "kind": "chunk",
+      "signature": "# lup",
+      "summary": "Introduces 'lup', an AI-powered code documentation tool that summarizes source files using tree-sitter, LLM, and sqlite-vec for local semantic lookups.",
+      "start_line": 1,
+      "end_line": 40,
+      "occurrence_count": 1
+    },
+    {
+      "name": "lines_36_75",
+      "kind": "chunk",
+      "signature": "Or download and run manually:",
+      "summary": "Provides instructions for downloading and running 'lup' manually using shell scripts and PowerShell commands.",
+      "start_line": 36,
+      "end_line": 75,
+      "occurrence_count": 1
+    },
+    {
+      "name": "lines_71_110",
+      "kind": "chunk",
+      "signature": "| `make` | Build binary for current platform |",
+      "summary": "Describes various 'make' commands for building and installing 'lup', including cross-compilation.",
+      "start_line": 71,
+      "end_line": 110,
+      "occurrence_count": 1
+    },
+    {
+      "name": "lines_106_145",
+      "kind": "chunk",
+      "signature": "embed_model = \"nomic-embed-text\"           # model for embeddings",
+      "summary": "Explains the configuration options for 'lup', including embedding models, API keys, and timeout settings.",
+      "start_line": 106,
+      "end_line": 145,
+      "occurrence_count": 1
+    },
+    {
+      "name": "lines_141_180",
+      "kind": "chunk",
+      "signature": "lup index",
+      "summary": "Lists commands for re-embedding summaries, showing configuration, status of summarised files, and project storage details.",
+      "start_line": 141,
+      "end_line": 180,
+      "occurrence_count": 1
+    },
+    {
+      "name": "lines_176_207",
+      "kind": "chunk",
+      "signature": "Committing `.lup/summaries/` is optional but useful if you want to share pre-generated documentation with your team.",
+      "summary": "Discusses the option to commit generated summaries for sharing and lists supported languages and editor integrations.",
+      "start_line": 176,
+      "end_line": 207,
+      "occurrence_count": 1
+    }
+  ]
+}

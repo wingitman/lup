@@ -1,0 +1,307 @@
+{
+  "file": "internal/rag/rag.go",
+  "summarised_at": "2026-04-30T23:21:34.054531148Z",
+  "file_summary": "This file defines the RAG (Retrieval-Augmented Generation) engine for searching and retrieving symbol information from a codebase.",
+  "symbols": [
+    {
+      "name": "refs",
+      "kind": "variable",
+      "signature": "var refs []store.Reference",
+      "summary": "A list of references to store symbols.",
+      "start_line": 94,
+      "end_line": 94,
+      "occurrence_count": 1,
+      "references": [
+        "store"
+      ]
+    },
+    {
+      "name": "similar",
+      "kind": "variable",
+      "signature": "var similar []SimilarSymbol",
+      "summary": "A list of similar symbols based on semantic embeddings.",
+      "start_line": 161,
+      "end_line": 161,
+      "occurrence_count": 1
+    },
+    {
+      "name": "allUsages",
+      "kind": "variable",
+      "signature": "var allUsages []Usage",
+      "summary": "A list of all usages of a symbol across the project.",
+      "start_line": 268,
+      "end_line": 268,
+      "occurrence_count": 1
+    },
+    {
+      "name": "fileText",
+      "kind": "variable",
+      "signature": "fileText := \"file \" + fs.File + \": \" + fs.FileSummary",
+      "summary": "Constructs a string representing the file and its summary for embedding.",
+      "start_line": 84,
+      "end_line": 84,
+      "occurrence_count": 1,
+      "references": [
+        "fs"
+      ]
+    },
+    {
+      "name": "fileEmbed",
+      "kind": "variable",
+      "signature": "fileEmbed, err := e.llm.Embed(ctx, fileText)",
+      "summary": "Generates an embedding for the file text using the LLM client.",
+      "start_line": 85,
+      "end_line": 85,
+      "occurrence_count": 1,
+      "references": [
+        "e",
+        "ctx",
+        "fileText"
+      ]
+    },
+    {
+      "name": "text",
+      "kind": "variable",
+      "signature": "text := buildSymbolText(sym)",
+      "summary": "Constructs a string representation of a symbol for embedding.",
+      "start_line": 96,
+      "end_line": 96,
+      "occurrence_count": 1,
+      "references": [
+        "buildSymbolText",
+        "sym"
+      ]
+    },
+    {
+      "name": "symEmbed",
+      "kind": "variable",
+      "signature": "symEmbed, err := e.llm.Embed(ctx, text)",
+      "summary": "Generates an embedding for the symbol text using the LLM client.",
+      "start_line": 97,
+      "end_line": 97,
+      "occurrence_count": 1,
+      "references": [
+        "e",
+        "ctx",
+        "text"
+      ]
+    },
+    {
+      "name": "embedding",
+      "kind": "variable",
+      "signature": "embedding, err := e.llm.Embed(ctx, queryText)",
+      "summary": "Generates an embedding for the query text using the LLM client.",
+      "start_line": 142,
+      "end_line": 142,
+      "occurrence_count": 1,
+      "references": [
+        "e",
+        "ctx",
+        "queryText"
+      ]
+    },
+    {
+      "name": "hits",
+      "kind": "variable",
+      "signature": "hits, err := e.vs.Search(embedding, topK)",
+      "summary": "Searches the vector store for top K similar embeddings.",
+      "start_line": 147,
+      "end_line": 147,
+      "occurrence_count": 1,
+      "references": [
+        "e",
+        "embedding",
+        "topK"
+      ]
+    },
+    {
+      "name": "results",
+      "kind": "variable",
+      "signature": "results := make([]LookupResult, 0, len(hits))",
+      "summary": "Initializes a slice to store lookup results.",
+      "start_line": 152,
+      "end_line": 152,
+      "occurrence_count": 1,
+      "references": [
+        "hits"
+      ]
+    },
+    {
+      "name": "sim",
+      "kind": "variable",
+      "signature": "sim := e.buildSimilar(other)",
+      "summary": "Builds a list of similar symbols based on the given symbol.",
+      "start_line": 169,
+      "end_line": 169,
+      "occurrence_count": 2,
+      "references": [
+        "e",
+        "other"
+      ]
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "signature": "result, err := e.hydrateLookup(hit, similar, showAll)",
+      "summary": "Hydrates a lookup result with detailed information.",
+      "start_line": 176,
+      "end_line": 176,
+      "occurrence_count": 3,
+      "references": [
+        "e",
+        "hit",
+        "similar",
+        "showAll"
+      ]
+    },
+    {
+      "name": "fs",
+      "kind": "variable",
+      "signature": "fs, err := store.ReadSummary(e.projectRoot, hit.FilePath)",
+      "summary": "Reads the summary of a file from the project root.",
+      "start_line": 237,
+      "end_line": 237,
+      "occurrence_count": 2,
+      "references": [
+        "store",
+        "e",
+        "hit"
+      ]
+    },
+    {
+      "name": "typeA",
+      "kind": "variable",
+      "signature": "typeA, err := e.vs.FindByName(hit.SymbolName)",
+      "summary": "Finds symbols by name in the vector store.",
+      "start_line": 258,
+      "end_line": 258,
+      "occurrence_count": 1,
+      "references": [
+        "e",
+        "hit"
+      ]
+    },
+    {
+      "name": "typeB",
+      "kind": "variable",
+      "signature": "typeB, err := e.vs.FindReferencers(hit.SymbolName)",
+      "summary": "Finds referencers of a symbol in the vector store.",
+      "start_line": 262,
+      "end_line": 262,
+      "occurrence_count": 1,
+      "references": [
+        "e",
+        "hit"
+      ]
+    },
+    {
+      "name": "seen",
+      "kind": "variable",
+      "signature": "seen := map[string]bool{}",
+      "summary": "A map to track seen usage keys to avoid duplicates.",
+      "start_line": 267,
+      "end_line": 267,
+      "occurrence_count": 1
+    },
+    {
+      "name": "addUsage",
+      "kind": "variable",
+      "signature": "addUsage := func(sr store.SearchResult) {",
+      "summary": "A function to add a usage entry if it hasn't been seen before.",
+      "start_line": 270,
+      "end_line": 297,
+      "occurrence_count": 1,
+      "references": [
+        "store"
+      ]
+    },
+    {
+      "name": "usage",
+      "kind": "variable",
+      "signature": "usage := Usage{",
+      "summary": "Creates a new usage entry with file, symbol name, kind, and start line.",
+      "start_line": 281,
+      "end_line": 286,
+      "occurrence_count": 1
+    },
+    {
+      "name": "ufs",
+      "kind": "variable",
+      "signature": "ufs, err := store.ReadSummary(e.projectRoot, sr.FilePath)",
+      "summary": "Reads the summary of a file for a search result.",
+      "start_line": 288,
+      "end_line": 288,
+      "occurrence_count": 1,
+      "references": [
+        "store",
+        "e"
+      ]
+    },
+    {
+      "name": "LookupResult",
+      "kind": "struct",
+      "signature": "type LookupResult struct {",
+      "summary": "Represents the result of a lookup query, including symbol details and usages.",
+      "start_line": 19,
+      "end_line": 39,
+      "occurrence_count": 1
+    },
+    {
+      "name": "Usage",
+      "kind": "struct",
+      "signature": "type Usage struct {",
+      "summary": "Represents a usage entry for a symbol, including file, name, kind, and context.",
+      "start_line": 42,
+      "end_line": 49,
+      "occurrence_count": 1
+    },
+    {
+      "name": "SimilarSymbol",
+      "kind": "struct",
+      "signature": "type SimilarSymbol struct {",
+      "summary": "Represents a similar symbol with its details and distance from the original.",
+      "start_line": 52,
+      "end_line": 58,
+      "occurrence_count": 1
+    },
+    {
+      "name": "Engine",
+      "kind": "struct",
+      "signature": "type Engine struct {",
+      "summary": "The main engine struct that holds the LLM client, vector store, and project root.",
+      "start_line": 65,
+      "end_line": 69,
+      "occurrence_count": 1,
+      "references": [
+        "llm",
+        "store"
+      ]
+    },
+    {
+      "name": "New",
+      "kind": "function",
+      "signature": "func New(client *llm.Client, vs *store.VectorStore, projectRoot string) *Engine {",
+      "summary": "Creates a new Engine instance with the given LLM client, vector store, and project root.",
+      "start_line": 72,
+      "end_line": 74,
+      "occurrence_count": 1,
+      "references": [
+        "llm",
+        "store"
+      ]
+    },
+    {
+      "name": "buildSymbolText",
+      "kind": "function",
+      "signature": "func buildSymbolText(sym store.SymbolSummary) string {",
+      "summary": "Builds a textual representation of a symbol summary for embedding.",
+      "start_line": 208,
+      "end_line": 223,
+      "occurrence_count": 1,
+      "references": [
+        "store",
+        "sym"
+      ]
+    }
+  ]
+}

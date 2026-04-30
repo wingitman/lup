@@ -13,15 +13,14 @@ import (
 )
 
 func init() {
-	// Register sqlite-vec extension for all future connections opened via
-	// the "sqlite3" driver.
 	sqlite_vec.Auto()
 }
 
-// VectorStore wraps a sqlite-vec database for storing and querying embeddings.
+// VectorStore wraps the sqlite-vec database for symbol-level embeddings and
+// the cross-symbol reference index.
 type VectorStore struct {
 	db  *sql.DB
-	dim int // embedding dimension (determined on first insert)
+	dim int
 }
 
 // OpenVectorStore opens (or creates) the sqlite-vec database at
@@ -33,10 +32,8 @@ func OpenVectorStore(projectRoot string) (*VectorStore, error) {
 	}
 
 	path := filepath.Join(dir, "index.db")
-	// Use a single connection (max_open_conns=1) so the COUNT(*) and the knn
-	// MATCH query always run on the same SQLite connection.  sqlite-vec's vec0
-	// virtual table requires the k= constraint to be visible to the same
-	// query planner pass — connection pool switching breaks this.
+	// Single connection: sqlite-vec knn queries require the k= constraint and
+	// the embedding MATCH to run on the same connection-level query planner pass.
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, fmt.Errorf("vector store: open %s: %w", path, err)
@@ -61,30 +58,46 @@ func (vs *VectorStore) Close() error {
 // ──────────────────────────────────────────────────────────
 
 func (vs *VectorStore) migrate() error {
-	// Metadata table — stores file path → dimension so we can create the vec
-	// table with the right dimension on first use.
-	_, err := vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_meta (
+	// Metadata: stores embedding dimension.
+	if _, err := vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_meta (
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
-	)`)
-	if err != nil {
+	)`); err != nil {
 		return fmt.Errorf("vector store: migrate meta: %w", err)
 	}
 
-	// Index table maps rowid → file path so we can join results.
-	_, err = vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_files (
-		id        INTEGER PRIMARY KEY AUTOINCREMENT,
-		file_path TEXT NOT NULL UNIQUE,
-		chunk_key TEXT NOT NULL
-	)`)
-	if err != nil {
-		return fmt.Errorf("vector store: migrate files: %w", err)
+	// Symbol registry: one row per indexed symbol (including synthetic
+	// "__file__" rows for file-level embeddings).
+	if _, err := vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_symbols (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		file_path   TEXT    NOT NULL,
+		symbol_name TEXT    NOT NULL,
+		symbol_kind TEXT    NOT NULL,
+		start_line  INTEGER NOT NULL DEFAULT 0,
+		end_line    INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(file_path, symbol_name, start_line)
+	)`); err != nil {
+		return fmt.Errorf("vector store: migrate symbols: %w", err)
 	}
 
-	// Load dimension from meta if available.
+	// Reference map: "symbol (from_file, from_symbol) uses symbol named to_name".
+	// Indexed on to_name for O(1) reverse lookup.
+	if _, err := vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_references (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_file   TEXT NOT NULL,
+		from_symbol TEXT NOT NULL,
+		to_name     TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("vector store: migrate references: %w", err)
+	}
+	if _, err := vs.db.Exec(`CREATE INDEX IF NOT EXISTS idx_lup_references_to
+		ON lup_references(to_name)`); err != nil {
+		return fmt.Errorf("vector store: migrate references index: %w", err)
+	}
+
+	// Load stored embedding dimension.
 	var dimStr string
-	row := vs.db.QueryRow(`SELECT value FROM lup_meta WHERE key='dim'`)
-	if err := row.Scan(&dimStr); err == nil {
+	if err := vs.db.QueryRow(`SELECT value FROM lup_meta WHERE key='dim'`).Scan(&dimStr); err == nil {
 		var d int
 		fmt.Sscan(dimStr, &d)
 		if d > 0 {
@@ -92,7 +105,6 @@ func (vs *VectorStore) migrate() error {
 			return vs.ensureVecTable()
 		}
 	}
-
 	return nil
 }
 
@@ -100,8 +112,10 @@ func (vs *VectorStore) ensureVecTable() error {
 	if vs.dim == 0 {
 		return nil
 	}
-	_, err := vs.db.Exec(fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS lup_vec
-		USING vec0(embedding float[%d])`, vs.dim))
+	_, err := vs.db.Exec(fmt.Sprintf(
+		`CREATE VIRTUAL TABLE IF NOT EXISTS lup_vec USING vec0(embedding float[%d])`,
+		vs.dim,
+	))
 	if err != nil {
 		return fmt.Errorf("vector store: create vec table: %w", err)
 	}
@@ -112,9 +126,13 @@ func (vs *VectorStore) ensureVecTable() error {
 // Upsert
 // ──────────────────────────────────────────────────────────
 
-// Upsert stores or replaces an embedding for the given file path.
-// chunkKey is a human-readable label (e.g. "file", "function:CalculateGross").
-func (vs *VectorStore) Upsert(filePath, chunkKey string, embedding []float32) error {
+// UpsertSymbol stores or replaces an embedding for a single symbol.
+// symbolName "__file__" is the conventional key for a file-level embedding.
+func (vs *VectorStore) UpsertSymbol(
+	filePath, symbolName, symbolKind string,
+	startLine, endLine int,
+	embedding []float32,
+) error {
 	if err := vs.ensureDim(len(embedding)); err != nil {
 		return err
 	}
@@ -125,66 +143,96 @@ func (vs *VectorStore) Upsert(filePath, chunkKey string, embedding []float32) er
 	}
 	defer tx.Rollback()
 
-	// Insert or replace the file record to get a stable rowid.
-	res, err := tx.Exec(`INSERT INTO lup_files(file_path, chunk_key)
-		VALUES (?, ?)
-		ON CONFLICT(file_path) DO UPDATE SET chunk_key=excluded.chunk_key`,
-		filePath, chunkKey)
+	// Upsert the symbol row.
+	res, err := tx.Exec(`
+		INSERT INTO lup_symbols(file_path, symbol_name, symbol_kind, start_line, end_line)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(file_path, symbol_name, start_line)
+		DO UPDATE SET symbol_kind=excluded.symbol_kind, end_line=excluded.end_line`,
+		filePath, symbolName, symbolKind, startLine, endLine,
+	)
 	if err != nil {
-		return fmt.Errorf("vector store upsert files: %w", err)
+		return fmt.Errorf("vector store upsert symbol: %w", err)
 	}
 
 	rowID, err := res.LastInsertId()
-	if err != nil {
-		// On UPDATE the LastInsertId may be 0; fetch it explicitly.
-		row := tx.QueryRow(`SELECT id FROM lup_files WHERE file_path=?`, filePath)
-		if err2 := row.Scan(&rowID); err2 != nil {
+	if err != nil || rowID == 0 {
+		if err2 := tx.QueryRow(
+			`SELECT id FROM lup_symbols WHERE file_path=? AND symbol_name=? AND start_line=?`,
+			filePath, symbolName, startLine,
+		).Scan(&rowID); err2 != nil {
 			return fmt.Errorf("vector store upsert rowid: %w", err2)
 		}
 	}
 
 	blob := serializeFloat32(embedding)
-
-	// sqlite-vec: delete existing vector then re-insert (vec0 does not support
-	// UPDATE directly).
 	tx.Exec(`DELETE FROM lup_vec WHERE rowid=?`, rowID)
-	_, err = tx.Exec(`INSERT INTO lup_vec(rowid, embedding) VALUES (?, ?)`, rowID, blob)
-	if err != nil {
+	if _, err := tx.Exec(`INSERT INTO lup_vec(rowid, embedding) VALUES (?, ?)`, rowID, blob); err != nil {
 		return fmt.Errorf("vector store upsert vec: %w", err)
 	}
 
 	return tx.Commit()
 }
 
+// ReplaceReferences replaces all reference rows for a given file.
+// Called during IndexSummary with the full set of references extracted by the LLM.
+func (vs *VectorStore) ReplaceReferences(filePath string, refs []Reference) error {
+	tx, err := vs.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM lup_references WHERE from_file=?`, filePath); err != nil {
+		return fmt.Errorf("vector store replace refs delete: %w", err)
+	}
+
+	for _, r := range refs {
+		if _, err := tx.Exec(
+			`INSERT INTO lup_references(from_file, from_symbol, to_name) VALUES (?, ?, ?)`,
+			filePath, r.FromSymbol, r.ToName,
+		); err != nil {
+			return fmt.Errorf("vector store insert ref: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// Reference is a directed edge: symbol FromSymbol in file FromFile uses ToName.
+type Reference struct {
+	FromSymbol string
+	ToName     string
+}
+
 // ──────────────────────────────────────────────────────────
 // Search
 // ──────────────────────────────────────────────────────────
 
-// Result is a single ANN search result.
-type Result struct {
-	FilePath  string
-	ChunkKey  string
-	Distance  float64
+// SearchResult is a single ANN search result.
+type SearchResult struct {
+	FilePath   string
+	SymbolName string
+	SymbolKind string
+	StartLine  int
+	EndLine    int
+	Distance   float64
 }
 
-// Search returns the topK nearest neighbours to query.
-func (vs *VectorStore) Search(query []float32, topK int) ([]Result, error) {
+// Search returns the topK nearest symbol embeddings to query.
+func (vs *VectorStore) Search(query []float32, topK int) ([]SearchResult, error) {
 	if vs.dim == 0 {
-		return nil, nil // nothing indexed yet
+		return nil, nil
 	}
 
-	// sqlite-vec requires k ≤ number of indexed rows.  Run the COUNT in a
-	// transaction so it shares the same connection as the knn query — this
-	// avoids a pool-level race where a second connection opens a conflicting
-	// read on the vec0 virtual table.
 	tx, err := vs.db.Begin()
 	if err != nil {
-		return nil, fmt.Errorf("vector store search: begin tx: %w", err)
+		return nil, fmt.Errorf("vector store search begin: %w", err)
 	}
 	defer tx.Rollback()
 
 	var rowCount int
-	tx.QueryRow(`SELECT COUNT(*) FROM lup_files`).Scan(&rowCount)
+	tx.QueryRow(`SELECT COUNT(*) FROM lup_symbols`).Scan(&rowCount)
 	if rowCount == 0 {
 		return nil, nil
 	}
@@ -194,10 +242,8 @@ func (vs *VectorStore) Search(query []float32, topK int) ([]Result, error) {
 
 	blob := serializeFloat32(query)
 
-	// sqlite-vec knn queries require MATCH + k= directly on the virtual table;
-	// wrap in a subquery so the JOIN with lup_files doesn't confuse the planner.
 	rows, err := tx.Query(`
-		SELECT f.file_path, f.chunk_key, v.distance
+		SELECT s.file_path, s.symbol_name, s.symbol_kind, s.start_line, s.end_line, v.distance
 		FROM (
 			SELECT rowid, distance
 			FROM lup_vec
@@ -205,22 +251,23 @@ func (vs *VectorStore) Search(query []float32, topK int) ([]Result, error) {
 			  AND k = ?
 			ORDER BY distance
 		) v
-		JOIN lup_files f ON f.id = v.rowid
+		JOIN lup_symbols s ON s.id = v.rowid
 	`, blob, topK)
 	if err != nil {
 		return nil, fmt.Errorf("vector store search: %w", err)
 	}
-	defer rows.Close()
 
-	var results []Result
+	var results []SearchResult
 	for rows.Next() {
-		var r Result
-		if err := rows.Scan(&r.FilePath, &r.ChunkKey, &r.Distance); err != nil {
+		var r SearchResult
+		if err := rows.Scan(&r.FilePath, &r.SymbolName, &r.SymbolKind, &r.StartLine, &r.EndLine, &r.Distance); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		results = append(results, r)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, err
 	}
 	rows.Close()
@@ -228,7 +275,60 @@ func (vs *VectorStore) Search(query []float32, topK int) ([]Result, error) {
 	return results, nil
 }
 
-// DeleteFile removes all vectors associated with filePath.
+// FindByName returns all indexed symbols with the given name (Type A usages).
+// These are files where symbolName is a declared/assigned symbol in its own right.
+func (vs *VectorStore) FindByName(name string) ([]SearchResult, error) {
+	rows, err := vs.db.Query(`
+		SELECT file_path, symbol_name, symbol_kind, start_line, end_line
+		FROM lup_symbols
+		WHERE symbol_name = ? AND symbol_kind != 'file'
+		ORDER BY file_path, start_line
+	`, name)
+	if err != nil {
+		return nil, fmt.Errorf("vector store find by name: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.FilePath, &r.SymbolName, &r.SymbolKind, &r.StartLine, &r.EndLine); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// FindReferencers returns all symbols that reference the given name (Type B usages).
+// These are symbols where the LLM noted they use/call/depend on name.
+// O(1) via the index on lup_references.to_name.
+func (vs *VectorStore) FindReferencers(name string) ([]SearchResult, error) {
+	rows, err := vs.db.Query(`
+		SELECT DISTINCT s.file_path, s.symbol_name, s.symbol_kind, s.start_line, s.end_line
+		FROM lup_references r
+		JOIN lup_symbols s
+		  ON s.file_path = r.from_file AND s.symbol_name = r.from_symbol
+		WHERE r.to_name = ?
+		ORDER BY s.file_path, s.start_line
+	`, name)
+	if err != nil {
+		return nil, fmt.Errorf("vector store find referencers: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.FilePath, &r.SymbolName, &r.SymbolKind, &r.StartLine, &r.EndLine); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// DeleteFile removes all vectors, symbol rows, and reference rows for filePath.
 func (vs *VectorStore) DeleteFile(filePath string) error {
 	tx, err := vs.db.Begin()
 	if err != nil {
@@ -236,14 +336,25 @@ func (vs *VectorStore) DeleteFile(filePath string) error {
 	}
 	defer tx.Rollback()
 
-	var rowID int64
-	row := tx.QueryRow(`SELECT id FROM lup_files WHERE file_path=?`, filePath)
-	if err := row.Scan(&rowID); err != nil {
-		return tx.Commit() // nothing to delete
+	// Collect rowids to delete from lup_vec.
+	rows, err := tx.Query(`SELECT id FROM lup_symbols WHERE file_path=?`, filePath)
+	if err != nil {
+		return err
 	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
 
-	tx.Exec(`DELETE FROM lup_vec WHERE rowid=?`, rowID)
-	tx.Exec(`DELETE FROM lup_files WHERE id=?`, rowID)
+	for _, id := range ids {
+		tx.Exec(`DELETE FROM lup_vec WHERE rowid=?`, id)
+	}
+	tx.Exec(`DELETE FROM lup_symbols WHERE file_path=?`, filePath)
+	tx.Exec(`DELETE FROM lup_references WHERE from_file=?`, filePath)
+
 	return tx.Commit()
 }
 
@@ -254,7 +365,6 @@ func (vs *VectorStore) DeleteFile(filePath string) error {
 func (vs *VectorStore) ensureDim(dim int) error {
 	if vs.dim == 0 {
 		vs.dim = dim
-		// Persist dimension.
 		vs.db.Exec(`INSERT OR REPLACE INTO lup_meta(key, value) VALUES ('dim', ?)`,
 			fmt.Sprintf("%d", dim))
 		return vs.ensureVecTable()
@@ -265,8 +375,6 @@ func (vs *VectorStore) ensureDim(dim int) error {
 	return nil
 }
 
-// serializeFloat32 encodes a []float32 as a little-endian byte slice.
-// This is the format sqlite-vec expects for float vectors.
 func serializeFloat32(v []float32) []byte {
 	b := make([]byte, len(v)*4)
 	for i, f := range v {

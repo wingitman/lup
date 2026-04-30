@@ -1,0 +1,189 @@
+{
+  "file": "internal/store/summary.go",
+  "summarised_at": "2026-04-30T23:22:02.15034909Z",
+  "file_summary": "This file provides functions to manage code summary files for a project.",
+  "symbols": [
+    {
+      "name": "summaryPath",
+      "kind": "function",
+      "signature": "func summaryPath(projectRoot, relPath string) string {",
+      "summary": "Generates the path for a summary file based on the project root and relative path.",
+      "start_line": 56,
+      "end_line": 59,
+      "occurrence_count": 1,
+      "references": [
+        "strings",
+        "filepath"
+      ]
+    },
+    {
+      "name": "WriteSummary",
+      "kind": "function",
+      "signature": "func WriteSummary(projectRoot string, fs FileSummary) error {",
+      "summary": "Writes a file summary to the project's summary directory.",
+      "start_line": 62,
+      "end_line": 75,
+      "occurrence_count": 1,
+      "references": [
+        "os",
+        "filepath",
+        "json"
+      ]
+    },
+    {
+      "name": "ReadSummary",
+      "kind": "function",
+      "signature": "func ReadSummary(projectRoot, relPath string) (FileSummary, error) {",
+      "summary": "Reads a file summary from the project's summary directory.",
+      "start_line": 79,
+      "end_line": 88,
+      "occurrence_count": 1,
+      "references": [
+        "os",
+        "json"
+      ]
+    },
+    {
+      "name": "ListSummaries",
+      "kind": "function",
+      "signature": "func ListSummaries(projectRoot string) ([]FileSummary, error) {",
+      "summary": "Lists all file summaries in the project's summary directory.",
+      "start_line": 91,
+      "end_line": 117,
+      "occurrence_count": 1,
+      "references": [
+        "os",
+        "filepath",
+        "strings",
+        "json"
+      ]
+    },
+    {
+      "name": "DeleteSummary",
+      "kind": "function",
+      "signature": "func DeleteSummary(projectRoot, relPath string) error {",
+      "summary": "Deletes a file summary from the project's summary directory.",
+      "start_line": 120,
+      "end_line": 122,
+      "occurrence_count": 1,
+      "references": [
+        "os"
+      ]
+    },
+    {
+      "name": "SummaryExists",
+      "kind": "function",
+      "signature": "func SummaryExists(projectRoot, relPath string) bool {",
+      "summary": "Checks if a file summary exists in the project's summary directory.",
+      "start_line": 125,
+      "end_line": 128,
+      "occurrence_count": 1,
+      "references": [
+        "os"
+      ]
+    },
+    {
+      "name": "SymbolSummary",
+      "kind": "struct",
+      "signature": "type SymbolSummary struct {",
+      "summary": "Represents a summary of a code symbol, including its name, kind, signature, and description.",
+      "start_line": 16,
+      "end_line": 40,
+      "occurrence_count": 1
+    },
+    {
+      "name": "FileSummary",
+      "kind": "struct",
+      "signature": "type FileSummary struct {",
+      "summary": "Represents a summary of a file, including the file path, timestamp, overall summary, and list of symbol summaries.",
+      "start_line": 43,
+      "end_line": 49,
+      "occurrence_count": 1,
+      "references": [
+        "time"
+      ]
+    },
+    {
+      "name": "fs",
+      "kind": "variable",
+      "signature": "var fs FileSummary",
+      "summary": "Holds a file summary; used in ReadSummary function to store the result.",
+      "start_line": 80,
+      "end_line": 80,
+      "occurrence_count": 2
+    },
+    {
+      "name": "safe",
+      "kind": "variable",
+      "signature": "safe := strings.ReplaceAll(relPath, string(filepath.Separator), \"_\")",
+      "summary": "Creates a safe filename by replacing path separators with underscores.",
+      "start_line": 57,
+      "end_line": 57,
+      "occurrence_count": 1,
+      "references": [
+        "strings",
+        "filepath"
+      ]
+    },
+    {
+      "name": "path",
+      "kind": "variable",
+      "signature": "path := summaryPath(projectRoot, fs.File)",
+      "summary": "Holds the path to a summary file; used in WriteSummary and ReadSummary functions.",
+      "start_line": 63,
+      "end_line": 63,
+      "occurrence_count": 2,
+      "references": [
+        "summaryPath"
+      ]
+    },
+    {
+      "name": "enc",
+      "kind": "variable",
+      "signature": "enc := json.NewEncoder(f)",
+      "summary": "JSON encoder for writing file summaries to disk.",
+      "start_line": 72,
+      "end_line": 72,
+      "occurrence_count": 1,
+      "references": [
+        "json"
+      ]
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "signature": "data, err := os.ReadFile(path)",
+      "summary": "Holds the contents of a summary file read from disk; used in ReadSummary and ListSummaries functions.",
+      "start_line": 82,
+      "end_line": 82,
+      "occurrence_count": 2,
+      "references": [
+        "os"
+      ]
+    },
+    {
+      "name": "dir",
+      "kind": "variable",
+      "signature": "dir := filepath.Join(projectRoot, \".lup\", \"summaries\")",
+      "summary": "Path to the directory storing summary files; used in ListSummaries function.",
+      "start_line": 92,
+      "end_line": 92,
+      "occurrence_count": 1,
+      "references": [
+        "filepath"
+      ]
+    },
+    {
+      "name": "entries",
+      "kind": "variable",
+      "signature": "entries, err := os.ReadDir(dir)",
+      "summary": "Holds the entries of the summaries directory; used in ListSummaries function.",
+      "start_line": 93,
+      "end_line": 93,
+      "occurrence_count": 1,
+      "references": [
+        "os"
+      ]
+    }
+  ]
+}

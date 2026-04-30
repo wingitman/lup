@@ -11,21 +11,41 @@ import (
 	"time"
 )
 
-// FunctionSummary is the LLM-generated summary for a single symbol.
-type FunctionSummary struct {
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
+// SymbolSummary is the LLM-generated summary for a single symbol (function,
+// method, variable, constant, class, struct, interface, attribute, or chunk).
+type SymbolSummary struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"` // function|method|variable|constant|class|struct|interface|attribute|chunk
+
+	// Signature is the first line (declaration) of the symbol.
 	Signature string `json:"signature"`
-	Summary   string `json:"summary"`
+
+	// Summary is a plain-English description of what this symbol does or
+	// represents.  For variables/constants the LLM is asked to describe the
+	// concept the name represents, not just its type.
+	Summary string `json:"summary"`
+
+	// StartLine and EndLine are 1-indexed source positions.
+	StartLine uint32 `json:"start_line"`
+	EndLine   uint32 `json:"end_line"`
+
+	// OccurrenceCount is how many times this name was declared/assigned in the
+	// file (useful for short-variable names that appear in many functions).
+	OccurrenceCount int `json:"occurrence_count"`
+
+	// References lists other named symbols this symbol uses, calls, or depends
+	// on.  Populated by the LLM during summarisation; used to build the
+	// cross-file reference index.
+	References []string `json:"references,omitempty"`
 }
 
 // FileSummary is the stored document for a single source file.
 type FileSummary struct {
 	// File is the path relative to the project root.
-	File          string            `json:"file"`
-	SummarisedAt  time.Time         `json:"summarised_at"`
-	FileSummary   string            `json:"file_summary"`
-	Functions     []FunctionSummary `json:"functions"`
+	File         string          `json:"file"`
+	SummarisedAt time.Time       `json:"summarised_at"`
+	FileSummary  string          `json:"file_summary"`
+	Symbols      []SymbolSummary `json:"symbols"`
 }
 
 // ──────────────────────────────────────────────────────────
@@ -33,10 +53,7 @@ type FileSummary struct {
 // ──────────────────────────────────────────────────────────
 
 // summaryPath returns the path where the summary for relPath is stored.
-// relPath is relative to projectRoot.
 func summaryPath(projectRoot, relPath string) string {
-	// Replace path separators so nested paths become a flat filename.
-	// e.g. "src/billing/gross.go" → "src_billing_gross.go.json"
 	safe := strings.ReplaceAll(relPath, string(filepath.Separator), "_")
 	return filepath.Join(projectRoot, ".lup", "summaries", safe+".json")
 }

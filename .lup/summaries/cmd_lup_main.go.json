@@ -1,0 +1,264 @@
+{
+  "file": "cmd/lup/main.go",
+  "summarised_at": "2026-04-30T23:18:48.925161911Z",
+  "file_summary": "This file defines the main command-line interface for a tool named LUP that parses and summarizes source files using AI-powered summaries.",
+  "symbols": [
+    {
+      "name": "outputJSON",
+      "kind": "variable",
+      "signature": "var outputJSON bool",
+      "summary": "Controls whether CLI output is emitted as JSON or human-readable text; enabled by the --json global flag.",
+      "start_line": 24,
+      "end_line": 24,
+      "occurrence_count": 1
+    },
+    {
+      "name": "force",
+      "kind": "variable",
+      "signature": "var force bool",
+      "summary": "Indicates whether to force operations that would normally be skipped due to existing results.",
+      "start_line": 64,
+      "end_line": 64,
+      "occurrence_count": 2
+    },
+    {
+      "name": "topK",
+      "kind": "variable",
+      "signature": "var topK int",
+      "summary": "Specifies the number of top symbols to consider for summarization.",
+      "start_line": 141,
+      "end_line": 141,
+      "occurrence_count": 1
+    },
+    {
+      "name": "context",
+      "kind": "variable",
+      "signature": "var context string",
+      "summary": "Holds additional context or information used during the summarization process.",
+      "start_line": 142,
+      "end_line": 142,
+      "occurrence_count": 1
+    },
+    {
+      "name": "showAll",
+      "kind": "variable",
+      "signature": "var showAll bool",
+      "summary": "Determines whether to display all symbols or only a subset.",
+      "start_line": 143,
+      "end_line": 143,
+      "occurrence_count": 1
+    },
+    {
+      "name": "dirSkipList",
+      "kind": "variable",
+      "signature": "var dirSkipList = map[string]bool{",
+      "summary": "A list of directories to skip during file processing, used to exclude common temporary or build directories.",
+      "start_line": 265,
+      "end_line": 271,
+      "occurrence_count": 1
+    },
+    {
+      "name": "concurrency",
+      "kind": "variable",
+      "signature": "var concurrency int",
+      "summary": "Specifies the level of concurrency for parallel processing of files.",
+      "start_line": 275,
+      "end_line": 275,
+      "occurrence_count": 1
+    },
+    {
+      "name": "files",
+      "kind": "variable",
+      "signature": "var files []string",
+      "summary": "A list of file paths to be processed by the tool.",
+      "start_line": 320,
+      "end_line": 320,
+      "occurrence_count": 1
+    },
+    {
+      "name": "patterns",
+      "kind": "variable",
+      "signature": "var patterns []string",
+      "summary": "A list of file name patterns used to filter files for processing.",
+      "start_line": 471,
+      "end_line": 471,
+      "occurrence_count": 1
+    },
+    {
+      "name": "indexed",
+      "kind": "variable",
+      "signature": "var indexed, failed int",
+      "summary": "Tracks the number of successfully indexed symbols and failed attempts.",
+      "start_line": 539,
+      "end_line": 539,
+      "occurrence_count": 1,
+      "references": [
+        "failed"
+      ]
+    },
+    {
+      "name": "failed",
+      "kind": "variable",
+      "signature": "var indexed, failed int",
+      "summary": "Tracks the number of failed attempts to index symbols.",
+      "start_line": 539,
+      "end_line": 539,
+      "occurrence_count": 1,
+      "references": [
+        "indexed"
+      ]
+    },
+    {
+      "name": "priority0",
+      "kind": "variable",
+      "signature": "var priority0, priority1, priority2 []parser.Symbol",
+      "summary": "Holds symbols categorized by their priority level for summarization.",
+      "start_line": 698,
+      "end_line": 698,
+      "occurrence_count": 1
+    },
+    {
+      "name": "priority1",
+      "kind": "variable",
+      "signature": "var priority0, priority1, priority2 []parser.Symbol",
+      "summary": "Holds symbols categorized by their priority level for summarization.",
+      "start_line": 698,
+      "end_line": 698,
+      "occurrence_count": 1
+    },
+    {
+      "name": "priority2",
+      "kind": "variable",
+      "signature": "var priority0, priority1, priority2 []parser.Symbol",
+      "summary": "Holds symbols categorized by their priority level for summarization.",
+      "start_line": 698,
+      "end_line": 698,
+      "occurrence_count": 1
+    },
+    {
+      "name": "bodyLines",
+      "kind": "variable",
+      "signature": "var bodyLines []string",
+      "summary": "Stores the lines of code that make up the body of a symbol or function.",
+      "start_line": 739,
+      "end_line": 739,
+      "occurrence_count": 1
+    },
+    {
+      "name": "lines",
+      "kind": "variable",
+      "signature": "var lines []string",
+      "summary": "Holds the lines of code for processing, used in multiple contexts.",
+      "start_line": 870,
+      "end_line": 870,
+      "occurrence_count": 2
+    },
+    {
+      "name": "systemPrompt",
+      "kind": "constant",
+      "signature": "const systemPrompt = `You are a code documentation assistant. Given a source file and its extracted",
+      "summary": "Defines the prompt template for the AI-powered summarization process.",
+      "start_line": 650,
+      "end_line": 678,
+      "occurrence_count": 1
+    },
+    {
+      "name": "maxSymbolsPerPrompt",
+      "kind": "constant",
+      "signature": "const maxSymbolsPerPrompt = 25",
+      "summary": "Specifies the maximum number of symbols to include in a single prompt for AI summarization.",
+      "start_line": 695,
+      "end_line": 695,
+      "occurrence_count": 1
+    },
+    {
+      "name": "bodyBudget",
+      "kind": "constant",
+      "signature": "const bodyBudget = 8000",
+      "summary": "Defines the maximum size limit for the body of code to be summarized in a single prompt.",
+      "start_line": 737,
+      "end_line": 737,
+      "occurrence_count": 1
+    },
+    {
+      "name": "root",
+      "kind": "variable",
+      "signature": "root := \u0026cobra.Command{",
+      "summary": "Defines the root command for the LUP CLI tool, setting up its usage and version information.",
+      "start_line": 32,
+      "end_line": 41,
+      "occurrence_count": 2,
+      "references": [
+        "version",
+        "buildTime"
+      ]
+    },
+    {
+      "name": "cmd",
+      "kind": "variable",
+      "signature": "cmd := \u0026cobra.Command{",
+      "summary": "Defines a subcommand for summarizing a source file, specifying its arguments and execution logic.",
+      "start_line": 66,
+      "end_line": 130,
+      "occurrence_count": 3,
+      "references": [
+        "cobra",
+        "args"
+      ]
+    },
+    {
+      "name": "absPath",
+      "kind": "variable",
+      "signature": "absPath, err := filepath.Abs(args[0])",
+      "summary": "Resolves the absolute path of the input file provided as an argument.",
+      "start_line": 71,
+      "end_line": 71,
+      "occurrence_count": 1,
+      "references": [
+        "filepath",
+        "args"
+      ]
+    },
+    {
+      "name": "projectRoot",
+      "kind": "variable",
+      "signature": "projectRoot := config.ProjectRoot(filepath.Dir(absPath))",
+      "summary": "Determines the root directory of the project containing the input file.",
+      "start_line": 76,
+      "end_line": 76,
+      "occurrence_count": 6,
+      "references": [
+        "config",
+        "filepath",
+        "absPath"
+      ]
+    },
+    {
+      "name": "cfg",
+      "kind": "variable",
+      "signature": "cfg, err := config.Load(projectRoot)",
+      "summary": "Loads the configuration for the LUP tool from the project root directory.",
+      "start_line": 81,
+      "end_line": 81,
+      "occurrence_count": 5,
+      "references": [
+        "config",
+        "projectRoot"
+      ]
+    },
+    {
+      "name": "relPath",
+      "kind": "variable",
+      "signature": "relPath, err := filepath.Rel(projectRoot, absPath)",
+      "summary": "Calculates the relative path of the input file with respect to the project root.",
+      "start_line": 86,
+      "end_line": 86,
+      "occurrence_count": 2,
+      "references": [
+        "filepath",
+        "projectRoot",
+        "absPath"
+      ]
+    }
+  ]
+}

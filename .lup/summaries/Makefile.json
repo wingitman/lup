@@ -1,25 +1,143 @@
 {
   "file": "Makefile",
-  "summarised_at": "2026-04-30T22:08:16.315008145Z",
+  "summarised_at": "2026-04-30T23:18:07.419222387Z",
   "file_summary": "This Makefile defines targets for building, installing, uninstalling, cleaning, and releasing a Go application named 'lup'.",
-  "functions": [
+  "symbols": [
     {
-      "name": "build",
-      "kind": "function",
+      "name": "lines_1_40",
+      "kind": "chunk",
+      "signature": "## lup – Makefile",
+      "summary": "This section provides an overview of the Makefile targets and defines variables for build configuration.",
+      "start_line": 1,
+      "end_line": 40,
+      "occurrence_count": 1,
+      "references": [
+        "BINARY",
+        "CMD",
+        "VERSION",
+        "BUILD_TIME",
+        "LDFLAGS",
+        "INSTALL_DIR",
+        "CONFIG_DIR"
+      ]
+    },
+    {
+      "name": "lines_36_75",
+      "kind": "chunk",
       "signature": "go build -ldflags=\"$(LDFLAGS)\" -o $(BINARY) $(CMD)",
-      "summary": "Builds the binary for the current platform."
+      "summary": "This section defines the 'build' target, which compiles the Go application for the current platform.",
+      "start_line": 36,
+      "end_line": 75,
+      "occurrence_count": 1,
+      "references": [
+        "BINARY",
+        "LDFLAGS",
+        "CMD"
+      ]
     },
     {
-      "name": "uninstall",
-      "kind": "function",
+      "name": "lines_71_110",
+      "kind": "chunk",
       "signature": "@rm -f $(INSTALL_DIR)/$(BINARY)",
-      "summary": "Removes the installed binary from the installation directory."
+      "summary": "This section defines the 'uninstall' target, which removes the installed binary from the installation directory.",
+      "start_line": 71,
+      "end_line": 110,
+      "occurrence_count": 1,
+      "references": [
+        "INSTALL_DIR",
+        "BINARY"
+      ]
     },
     {
-      "name": "release",
-      "kind": "function",
+      "name": "lines_106_144",
+      "kind": "chunk",
       "signature": "go build -ldflags=\"$(LDFLAGS)\" -o $(DIST)/$(BINARY)-linux-amd64 $(CMD)",
-      "summary": "Cross-compiles binaries for all supported platforms."
+      "summary": "This section defines the 'release' target, which cross-compiles the application for multiple platforms and outputs binaries to the 'dist' directory.",
+      "start_line": 106,
+      "end_line": 144,
+      "occurrence_count": 1,
+      "references": [
+        "DIST",
+        "LDFLAGS",
+        "BINARY",
+        "CMD"
+      ]
+    },
+    {
+      "name": "BINARY",
+      "kind": "variable",
+      "signature": "BINARY     := lup",
+      "summary": "The name of the output binary file.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0
+    },
+    {
+      "name": "CMD",
+      "kind": "variable",
+      "signature": "CMD        := ./cmd/lup",
+      "summary": "The command to build, pointing to the main package directory.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0
+    },
+    {
+      "name": "VERSION",
+      "kind": "variable",
+      "signature": "VERSION    := $(shell git describe --tags --always --dirty 2\u003e/dev/null || echo \"dev\")",
+      "summary": "The version string derived from Git tags, or 'dev' if not available.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0
+    },
+    {
+      "name": "BUILD_TIME",
+      "kind": "variable",
+      "signature": "BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)",
+      "summary": "The build timestamp in UTC format.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0
+    },
+    {
+      "name": "LDFLAGS",
+      "kind": "variable",
+      "signature": "LDFLAGS    := -s -w \\\n              -X main.version=$(VERSION) \\\n              -X main.buildTime=$(BUILD_TIME)",
+      "summary": "Linker flags for embedding version and build time into the binary.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "VERSION",
+        "BUILD_TIME"
+      ]
+    },
+    {
+      "name": "INSTALL_DIR",
+      "kind": "variable",
+      "signature": "INSTALL_DIR ?= $(HOME)/.local/bin",
+      "summary": "The directory where the binary will be installed, defaulting to ~/.local/bin.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0
+    },
+    {
+      "name": "CONFIG_DIR",
+      "kind": "variable",
+      "signature": "CONFIG_DIR  := $(HOME)/.config/lup",
+      "summary": "The directory for the configuration file.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0
+    },
+    {
+      "name": "DIST",
+      "kind": "variable",
+      "signature": "DIST := dist",
+      "summary": "The directory where release binaries are stored.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0
     }
   ]
 }

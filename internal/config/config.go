@@ -29,6 +29,10 @@ type IndexConfig struct {
 	// editor plugin. The plugin is responsible for calling `lup summarise`;
 	// this flag is read by the plugin, not by the CLI itself.
 	AutoSummarise bool `toml:"auto_summarise"`
+	// Concurrency controls how many files `lup document` summarises in
+	// parallel.  Keep this low (2-3) to avoid hammering the LLM server and
+	// the user's machine.
+	Concurrency int `toml:"concurrency"`
 }
 
 // Config is the top-level configuration structure.
@@ -50,6 +54,7 @@ func defaults() Config {
 		Index: IndexConfig{
 			TopK:          5,
 			AutoSummarise: true,
+			Concurrency:   2,
 		},
 	}
 }

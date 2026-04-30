@@ -1,0 +1,201 @@
+{
+  "file": "internal/config/config.go",
+  "summarised_at": "2026-04-30T23:19:41.415199688Z",
+  "file_summary": "This file defines the configuration structure and functions for loading and managing project configurations.",
+  "symbols": [
+    {
+      "name": "defaults",
+      "kind": "function",
+      "signature": "func defaults() Config {",
+      "summary": "Returns a default configuration with predefined settings.",
+      "start_line": 45,
+      "end_line": 60,
+      "occurrence_count": 1,
+      "references": [
+        "Config",
+        "LLMConfig",
+        "IndexConfig"
+      ]
+    },
+    {
+      "name": "Load",
+      "kind": "function",
+      "signature": "func Load(projectRoot string) (Config, error) {",
+      "summary": "Loads the configuration by merging global and project-specific settings.",
+      "start_line": 65,
+      "end_line": 84,
+      "occurrence_count": 1,
+      "references": [
+        "defaults",
+        "globalConfigPath",
+        "mergeFile",
+        "filepath.Join"
+      ]
+    },
+    {
+      "name": "globalConfigPath",
+      "kind": "function",
+      "signature": "func globalConfigPath() (string, error) {",
+      "summary": "Determines the path to the global configuration file.",
+      "start_line": 87,
+      "end_line": 93,
+      "occurrence_count": 1,
+      "references": [
+        "os.UserHomeDir",
+        "filepath.Join"
+      ]
+    },
+    {
+      "name": "mergeFile",
+      "kind": "function",
+      "signature": "func mergeFile(dst *Config, path string) error {",
+      "summary": "Merges the configuration from a file into the destination Config.",
+      "start_line": 97,
+      "end_line": 105,
+      "occurrence_count": 1,
+      "references": [
+        "os.Open",
+        "toml.NewDecoder"
+      ]
+    },
+    {
+      "name": "EnsureProjectDir",
+      "kind": "function",
+      "signature": "func EnsureProjectDir(projectRoot string) error {",
+      "summary": "Creates necessary directories for project configuration and data.",
+      "start_line": 109,
+      "end_line": 119,
+      "occurrence_count": 1,
+      "references": [
+        "filepath.Join",
+        "os.MkdirAll"
+      ]
+    },
+    {
+      "name": "ProjectRoot",
+      "kind": "function",
+      "signature": "func ProjectRoot(startDir string) string {",
+      "summary": "Finds the root directory of a project by looking for a marker file.",
+      "start_line": 124,
+      "end_line": 137,
+      "occurrence_count": 1,
+      "references": [
+        "filepath.Join",
+        "os.Stat"
+      ]
+    },
+    {
+      "name": "LLMConfig",
+      "kind": "struct",
+      "signature": "type LLMConfig struct {",
+      "summary": "Represents the configuration settings for the Language Model (LLM).",
+      "start_line": 15,
+      "end_line": 22,
+      "occurrence_count": 1
+    },
+    {
+      "name": "IndexConfig",
+      "kind": "struct",
+      "signature": "type IndexConfig struct {",
+      "summary": "Represents the configuration settings for indexing.",
+      "start_line": 25,
+      "end_line": 36,
+      "occurrence_count": 1
+    },
+    {
+      "name": "Config",
+      "kind": "struct",
+      "signature": "type Config struct {",
+      "summary": "Main configuration structure that includes LLM and index configurations.",
+      "start_line": 39,
+      "end_line": 42,
+      "occurrence_count": 1,
+      "references": [
+        "LLMConfig",
+        "IndexConfig"
+      ]
+    },
+    {
+      "name": "cfg",
+      "kind": "variable",
+      "signature": "cfg := defaults()",
+      "summary": "Holds the default configuration settings initialized by the defaults function.",
+      "start_line": 66,
+      "end_line": 66,
+      "occurrence_count": 1,
+      "references": [
+        "defaults"
+      ]
+    },
+    {
+      "name": "globalPath",
+      "kind": "variable",
+      "signature": "globalPath, err := globalConfigPath()",
+      "summary": "Stores the path to the global configuration file determined by globalConfigPath.",
+      "start_line": 69,
+      "end_line": 69,
+      "occurrence_count": 1,
+      "references": [
+        "globalConfigPath"
+      ]
+    },
+    {
+      "name": "localPath",
+      "kind": "variable",
+      "signature": "localPath := filepath.Join(projectRoot, \".lup\", \"config.toml\")",
+      "summary": "Constructs the path to the local project configuration file.",
+      "start_line": 77,
+      "end_line": 77,
+      "occurrence_count": 1,
+      "references": [
+        "filepath.Join"
+      ]
+    },
+    {
+      "name": "home",
+      "kind": "variable",
+      "signature": "home, err := os.UserHomeDir()",
+      "summary": "Stores the user's home directory path retrieved by os.UserHomeDir.",
+      "start_line": 88,
+      "end_line": 88,
+      "occurrence_count": 1,
+      "references": [
+        "os.UserHomeDir"
+      ]
+    },
+    {
+      "name": "dirs",
+      "kind": "variable",
+      "signature": "dirs := []string{",
+      "summary": "List of directories to be created for project configuration and data.",
+      "start_line": 110,
+      "end_line": 112,
+      "occurrence_count": 1
+    },
+    {
+      "name": "dir",
+      "kind": "variable",
+      "signature": "dir := startDir",
+      "summary": "Initial directory used to search for the project root marker file.",
+      "start_line": 125,
+      "end_line": 125,
+      "occurrence_count": 1,
+      "references": [
+        "startDir"
+      ]
+    },
+    {
+      "name": "parent",
+      "kind": "variable",
+      "signature": "parent := filepath.Dir(dir)",
+      "summary": "Parent directory of the current directory in the project root search process.",
+      "start_line": 130,
+      "end_line": 130,
+      "occurrence_count": 1,
+      "references": [
+        "filepath.Dir",
+        "dir"
+      ]
+    }
+  ]
+}

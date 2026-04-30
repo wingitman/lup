@@ -1,0 +1,167 @@
+{
+  "file": "internal/llm/client.go",
+  "summarised_at": "2026-04-30T23:20:07.598523343Z",
+  "file_summary": "This file defines a client for interacting with an LLM (Language Model) API, providing methods to complete prompts and generate embeddings.",
+  "symbols": [
+    {
+      "name": "New",
+      "kind": "function",
+      "signature": "func New(baseURL, apiKey, chatModel, embedModel string, timeoutSecs int) *Client {",
+      "summary": "Creates a new Client instance with the given configuration.",
+      "start_line": 27,
+      "end_line": 35,
+      "occurrence_count": 1,
+      "references": [
+        "Client"
+      ]
+    },
+    {
+      "name": "Complete",
+      "kind": "method",
+      "signature": "func (c *Client) Complete(ctx context.Context, systemPrompt, userPrompt string) (string, error) {",
+      "summary": "Sends a chat completion request to the LLM API using the provided prompts.",
+      "start_line": 62,
+      "end_line": 83,
+      "occurrence_count": 1,
+      "references": [
+        "chatRequest",
+        "chatResponse",
+        "post"
+      ]
+    },
+    {
+      "name": "Embed",
+      "kind": "method",
+      "signature": "func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {",
+      "summary": "Sends a request to generate embeddings for the given text using the LLM API.",
+      "start_line": 104,
+      "end_line": 121,
+      "occurrence_count": 1,
+      "references": [
+        "embedRequest",
+        "embedResponse",
+        "post"
+      ]
+    },
+    {
+      "name": "post",
+      "kind": "method",
+      "signature": "func (c *Client) post(ctx context.Context, path string, body, out interface{}) error {",
+      "summary": "Performs an HTTP POST request to the LLM API with the given path and body.",
+      "start_line": 131,
+      "end_line": 162,
+      "occurrence_count": 1,
+      "references": [
+        "http",
+        "json"
+      ]
+    },
+    {
+      "name": "Client",
+      "kind": "struct",
+      "signature": "type Client struct {",
+      "summary": "Represents a client for interacting with an LLM API, holding configuration and HTTP client details.",
+      "start_line": 18,
+      "end_line": 24,
+      "occurrence_count": 1
+    },
+    {
+      "name": "chatMessage",
+      "kind": "struct",
+      "signature": "type chatMessage struct {",
+      "summary": "Represents a message in a chat request, containing role and content fields.",
+      "start_line": 41,
+      "end_line": 44,
+      "occurrence_count": 1
+    },
+    {
+      "name": "chatRequest",
+      "kind": "struct",
+      "signature": "type chatRequest struct {",
+      "summary": "Represents a chat completion request to the LLM API, including model, messages, and temperature.",
+      "start_line": 46,
+      "end_line": 50,
+      "occurrence_count": 1,
+      "references": [
+        "chatMessage"
+      ]
+    },
+    {
+      "name": "chatChoice",
+      "kind": "struct",
+      "signature": "type chatChoice struct {",
+      "summary": "Represents a choice in a chat response, containing the generated message.",
+      "start_line": 52,
+      "end_line": 54,
+      "occurrence_count": 1,
+      "references": [
+        "chatMessage"
+      ]
+    },
+    {
+      "name": "chatResponse",
+      "kind": "struct",
+      "signature": "type chatResponse struct {",
+      "summary": "Represents a response from a chat completion request, including choices and potential errors.",
+      "start_line": 56,
+      "end_line": 59,
+      "occurrence_count": 1,
+      "references": [
+        "chatChoice",
+        "apiError"
+      ]
+    },
+    {
+      "name": "embedRequest",
+      "kind": "struct",
+      "signature": "type embedRequest struct {",
+      "summary": "Represents an embedding generation request to the LLM API, including model and input text.",
+      "start_line": 89,
+      "end_line": 92,
+      "occurrence_count": 1
+    },
+    {
+      "name": "embedData",
+      "kind": "struct",
+      "signature": "type embedData struct {",
+      "summary": "Represents data in an embedding response, containing the generated embedding.",
+      "start_line": 94,
+      "end_line": 96,
+      "occurrence_count": 1
+    },
+    {
+      "name": "embedResponse",
+      "kind": "struct",
+      "signature": "type embedResponse struct {",
+      "summary": "Represents a response from an embedding generation request, including data and potential errors.",
+      "start_line": 98,
+      "end_line": 101,
+      "occurrence_count": 1,
+      "references": [
+        "embedData",
+        "apiError"
+      ]
+    },
+    {
+      "name": "apiError",
+      "kind": "struct",
+      "signature": "type apiError struct {",
+      "summary": "Represents an error message returned by the LLM API.",
+      "start_line": 127,
+      "end_line": 129,
+      "occurrence_count": 1
+    },
+    {
+      "name": "raw",
+      "kind": "variable",
+      "signature": "raw, err := io.ReadAll(resp.Body)",
+      "summary": "Holds the raw response body read from the HTTP response.",
+      "start_line": 152,
+      "end_line": 152,
+      "occurrence_count": 1,
+      "references": [
+        "io"
+      ]
+    }
+  ]
+}

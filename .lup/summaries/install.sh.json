@@ -1,0 +1,151 @@
+{
+  "file": "install.sh",
+  "summarised_at": "2026-04-30T23:19:13.334292042Z",
+  "file_summary": "This script installs the 'lup' binary on Linux and macOS by building from source or downloading a pre-built version, and sets up default configuration.",
+  "symbols": [
+    {
+      "name": "lines_1_40",
+      "kind": "chunk",
+      "signature": "#!/usr/bin/env bash",
+      "summary": "This section is the script header with usage instructions and a description of what the script does.",
+      "start_line": 1,
+      "end_line": 40,
+      "occurrence_count": 1
+    },
+    {
+      "name": "REPO",
+      "kind": "variable",
+      "signature": "REPO=\"wingitman/lup\"",
+      "summary": "The GitHub repository for the lup project; used to clone source code or download pre-built binaries.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "git",
+        "curl"
+      ]
+    },
+    {
+      "name": "BINARY",
+      "kind": "variable",
+      "signature": "BINARY=\"lup\"",
+      "summary": "The name of the binary being installed; used throughout the script to refer to the executable.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "check_existing",
+        "build_from_source",
+        "download_binary"
+      ]
+    },
+    {
+      "name": "INSTALL_DIR",
+      "kind": "variable",
+      "signature": "INSTALL_DIR=\"${1:-${INSTALL_DIR:-$HOME/.local/bin}}\"",
+      "summary": "The directory where the binary will be installed; defaults to $HOME/.local/bin or can be set via command line argument.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "main",
+        "install_config"
+      ]
+    },
+    {
+      "name": "CONFIG_DIR",
+      "kind": "variable",
+      "signature": "CONFIG_DIR=\"$HOME/.config/lup\"",
+      "summary": "The directory where the configuration file will be installed; used in install_config function.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "install_config"
+      ]
+    },
+    {
+      "name": "TMP_DIR",
+      "kind": "variable",
+      "signature": "TMP_DIR=\"$(mktemp -d)\"",
+      "summary": "A temporary directory for downloading and building the binary; cleaned up at script exit.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "cleanup",
+        "build_from_source"
+      ]
+    },
+    {
+      "name": "check_existing",
+      "kind": "function",
+      "signature": "check_existing() {",
+      "summary": "Checks if lup is already installed and warns the user if it is.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "BINARY",
+        "warn"
+      ]
+    },
+    {
+      "name": "build_from_source",
+      "kind": "function",
+      "signature": "build_from_source() {",
+      "summary": "Builds the lup binary from source code, preferring local repository if available or cloning it otherwise.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "REPO",
+        "TMP_DIR",
+        "BINARY"
+      ]
+    },
+    {
+      "name": "download_binary",
+      "kind": "function",
+      "signature": "download_binary() {",
+      "summary": "Downloads a pre-built binary from GitHub Releases if building from source is not possible.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "REPO",
+        "TMP_DIR",
+        "BINARY"
+      ]
+    },
+    {
+      "name": "install_config",
+      "kind": "function",
+      "signature": "install_config() {",
+      "summary": "Installs a default configuration file if one does not already exist.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "CONFIG_FILE",
+        "CONFIG_DIR"
+      ]
+    },
+    {
+      "name": "main",
+      "kind": "function",
+      "signature": "main() {",
+      "summary": "The main function that orchestrates the installation process, including platform detection and binary installation.",
+      "start_line": 0,
+      "end_line": 0,
+      "occurrence_count": 0,
+      "references": [
+        "check_existing",
+        "detect_platform",
+        "build_from_source",
+        "download_binary",
+        "install_config"
+      ]
+    }
+  ]
+}
