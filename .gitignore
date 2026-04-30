@@ -1,0 +1,15 @@
+# compiled binary
+lup
+
+# per-project lup data
+# summaries can be committed if you want to share them with your team
+.lup/index.db
+.lup/index.db-shm
+.lup/index.db-wal
+
+# Go build cache
+*.test
+*.out
+
+# editor
+.DS_Store

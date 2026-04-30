@@ -1,0 +1,34 @@
+# LUP configuration file
+#
+# Copy to ~/.config/lup/config.toml for global settings, or to
+# <project>/.lup/config.toml for per-project overrides.
+#
+# Any field omitted here falls back to the built-in default.
+
+[llm]
+# Base URL of any OpenAI-compatible API server.
+# Ollama default:   http://localhost:11434/v1
+# LM Studio:        http://localhost:1234/v1
+# OpenAI:           https://api.openai.com/v1
+base_url = "http://localhost:11434/v1"
+
+# Model used for file summarisation (chat completions).
+chat_model = "qwen2.5-coder:7b"
+
+# Model used for generating embeddings (must support /v1/embeddings).
+embed_model = "nomic-embed-text"
+
+# API key — leave empty for local servers that don't require auth.
+api_key = ""
+
+# HTTP timeout in seconds for a single LLM request.
+# Increase for slow hardware or large files.
+timeout_secs = 120
+
+[index]
+# Number of results returned by `lup lookup`.
+top_k = 5
+
+# When true, editor plugins should call `lup summarise` on file open.
+# This flag is read by the editor plugin, not enforced by the CLI.
+auto_summarise = true
