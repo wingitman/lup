@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -26,7 +27,12 @@ type VectorStore struct {
 // OpenVectorStore opens (or creates) the sqlite-vec database at
 // <projectRoot>/.lup/index.db.
 func OpenVectorStore(projectRoot string) (*VectorStore, error) {
-	path := filepath.Join(projectRoot, ".lup", "index.db")
+	dir := filepath.Join(projectRoot, ".lup")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("vector store: mkdir %s: %w", dir, err)
+	}
+
+	path := filepath.Join(dir, "index.db")
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, fmt.Errorf("vector store: open %s: %w", path, err)
