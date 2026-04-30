@@ -1,0 +1,61 @@
+{
+  "file": "internal/parser/parser.go",
+  "summarised_at": "2026-04-30T22:08:39.257657011Z",
+  "file_summary": "This file provides functions to parse source code files and extract symbols using tree-sitter or plain text chunking.",
+  "functions": [
+    {
+      "name": "init",
+      "kind": "function",
+      "signature": "func init() {",
+      "summary": "Initializes the language registry with supported languages and their query patterns."
+    },
+    {
+      "name": "ParseFile",
+      "kind": "function",
+      "signature": "func ParseFile(path string) (*File, error) {",
+      "summary": "Parses a source code file from disk and extracts its symbols."
+    },
+    {
+      "name": "ParseBytes",
+      "kind": "function",
+      "signature": "func ParseBytes(path string, src []byte) (*File, error) {",
+      "summary": "Parses source code bytes and extracts symbols using tree-sitter or plain text chunking."
+    },
+    {
+      "name": "SupportedExtensions",
+      "kind": "function",
+      "signature": "func SupportedExtensions() []string {",
+      "summary": "Returns a list of supported file extensions for parsing."
+    },
+    {
+      "name": "detectLang",
+      "kind": "function",
+      "signature": "func detectLang(path string) (langDef, string, bool) {",
+      "summary": "Detects the language of a file based on its extension."
+    },
+    {
+      "name": "isPlainText",
+      "kind": "function",
+      "signature": "func isPlainText(path string) (string, bool) {",
+      "summary": "Checks if a file should be treated as plain text for chunking."
+    },
+    {
+      "name": "extractSymbols",
+      "kind": "function",
+      "signature": "func extractSymbols(root *sitter.Node, src []byte, def langDef) []Symbol {",
+      "summary": "Extracts symbols from a tree-sitter parse tree using language-specific queries."
+    },
+    {
+      "name": "firstLine",
+      "kind": "function",
+      "signature": "func firstLine(s string) string {",
+      "summary": "Returns the first non-empty line of a string, truncated to 200 characters if necessary."
+    },
+    {
+      "name": "chunkPlainText",
+      "kind": "function",
+      "signature": "func chunkPlainText(src []byte) []Symbol {",
+      "summary": "Chunks plain text into symbols by splitting it into lines and creating chunks of a fixed size."
+    }
+  ]
+}

@@ -33,10 +33,15 @@ func OpenVectorStore(projectRoot string) (*VectorStore, error) {
 	}
 
 	path := filepath.Join(dir, "index.db")
+	// Use a single connection (max_open_conns=1) so the COUNT(*) and the knn
+	// MATCH query always run on the same SQLite connection.  sqlite-vec's vec0
+	// virtual table requires the k= constraint to be visible to the same
+	// query planner pass — connection pool switching breaks this.
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, fmt.Errorf("vector store: open %s: %w", path, err)
 	}
+	db.SetMaxOpenConns(1)
 
 	vs := &VectorStore{db: db}
 	if err := vs.migrate(); err != nil {
@@ -168,15 +173,39 @@ func (vs *VectorStore) Search(query []float32, topK int) ([]Result, error) {
 		return nil, nil // nothing indexed yet
 	}
 
+	// sqlite-vec requires k ≤ number of indexed rows.  Run the COUNT in a
+	// transaction so it shares the same connection as the knn query — this
+	// avoids a pool-level race where a second connection opens a conflicting
+	// read on the vec0 virtual table.
+	tx, err := vs.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("vector store search: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var rowCount int
+	tx.QueryRow(`SELECT COUNT(*) FROM lup_files`).Scan(&rowCount)
+	if rowCount == 0 {
+		return nil, nil
+	}
+	if topK > rowCount {
+		topK = rowCount
+	}
+
 	blob := serializeFloat32(query)
 
-	rows, err := vs.db.Query(`
+	// sqlite-vec knn queries require MATCH + k= directly on the virtual table;
+	// wrap in a subquery so the JOIN with lup_files doesn't confuse the planner.
+	rows, err := tx.Query(`
 		SELECT f.file_path, f.chunk_key, v.distance
-		FROM lup_vec v
+		FROM (
+			SELECT rowid, distance
+			FROM lup_vec
+			WHERE embedding MATCH ?
+			  AND k = ?
+			ORDER BY distance
+		) v
 		JOIN lup_files f ON f.id = v.rowid
-		WHERE v.embedding MATCH ?
-		ORDER BY v.distance
-		LIMIT ?
 	`, blob, topK)
 	if err != nil {
 		return nil, fmt.Errorf("vector store search: %w", err)
@@ -191,7 +220,12 @@ func (vs *VectorStore) Search(query []float32, topK int) ([]Result, error) {
 		}
 		results = append(results, r)
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	tx.Commit()
+	return results, nil
 }
 
 // DeleteFile removes all vectors associated with filePath.

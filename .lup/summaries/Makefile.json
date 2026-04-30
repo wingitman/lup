@@ -1,0 +1,25 @@
+{
+  "file": "Makefile",
+  "summarised_at": "2026-04-30T22:08:16.315008145Z",
+  "file_summary": "This Makefile defines targets for building, installing, uninstalling, cleaning, and releasing a Go application named 'lup'.",
+  "functions": [
+    {
+      "name": "build",
+      "kind": "function",
+      "signature": "go build -ldflags=\"$(LDFLAGS)\" -o $(BINARY) $(CMD)",
+      "summary": "Builds the binary for the current platform."
+    },
+    {
+      "name": "uninstall",
+      "kind": "function",
+      "signature": "@rm -f $(INSTALL_DIR)/$(BINARY)",
+      "summary": "Removes the installed binary from the installation directory."
+    },
+    {
+      "name": "release",
+      "kind": "function",
+      "signature": "go build -ldflags=\"$(LDFLAGS)\" -o $(DIST)/$(BINARY)-linux-amd64 $(CMD)",
+      "summary": "Cross-compiles binaries for all supported platforms."
+    }
+  ]
+}
