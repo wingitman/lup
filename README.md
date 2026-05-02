@@ -79,7 +79,7 @@ make install INSTALL_DIR=/usr/local/bin
 ```sh
 git clone https://github.com/wingitman/lup
 cd lup
-go build -o lup ./cmd/lup
+go build -o lup .
 ```
 
 ---

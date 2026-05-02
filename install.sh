@@ -106,7 +106,7 @@ build_from_source() {
     go build \
       -ldflags="-s -w -X main.version=$version -X main.buildTime=$buildtime" \
       -o "$TMP_DIR/$BINARY" \
-      ./cmd/lup
+      .
   )
 
   echo "$TMP_DIR/$BINARY"
