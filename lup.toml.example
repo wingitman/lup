@@ -32,3 +32,19 @@ top_k = 5
 # When true, editor plugins should call `lup summarise` on file open.
 # This flag is read by the editor plugin, not enforced by the CLI.
 auto_summarise = true
+
+# Parallel workers used by `lup document`.
+concurrency = 2
+
+[updates]
+# Disable explicit `lup updates` checks. No automatic startup prompts are shown.
+disable_checks = false
+
+# Installed app commit, maintained by `lup updates`.
+current_commit = ""
+
+# Source checkout used for git-based updates.
+repo_path = ""
+
+# Optional terminal command for detached update installs.
+terminal = ""

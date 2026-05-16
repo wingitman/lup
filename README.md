@@ -110,6 +110,12 @@ timeout_secs = 120
 [index]
 top_k          = 5     # results returned by `lup lookup`
 auto_summarise = true  # hint for editor plugins
+
+[updates]
+disable_checks = false  # disables update commands when true
+current_commit = ""     # installed app commit, maintained by lup
+repo_path = ""          # source checkout used for updates
+terminal = ""           # optional terminal command for detached updates
 ```
 
 Per-project overrides go in `.lup/config.toml` at your project root. Any value set there takes precedence over the global config.
@@ -151,6 +157,11 @@ Show the resolved configuration (global + project-local merged).
 lup status [--json]
 ```
 List all summarised files in the current project with symbol counts and timestamps.
+
+```
+lup updates [--check] [--install] [--commit <hash>]
+```
+Show recent lup changes, check for newer commits, or launch a detached terminal installer. Updates use the configured source checkout's current branch/upstream, so forks and feature branches are preserved.
 
 ---
 

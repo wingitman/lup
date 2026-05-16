@@ -13,8 +13,8 @@ CMD        := .
 VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS    := -s -w \
-              -X main.version=$(VERSION) \
-              -X main.buildTime=$(BUILD_TIME)
+              -X github.com/wingitman/lup/internal/version.Commit=$(VERSION) \
+              -X github.com/wingitman/lup/internal/version.BuildTime=$(BUILD_TIME)
 
 # Installation directory — defaults to ~/.local/bin (no sudo needed).
 # Override: make install INSTALL_DIR=/usr/local/bin

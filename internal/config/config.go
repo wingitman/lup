@@ -5,8 +5,10 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -35,10 +37,19 @@ type IndexConfig struct {
 	Concurrency int `toml:"concurrency"`
 }
 
+// UpdatesConfig holds update-check and installer preferences.
+type UpdatesConfig struct {
+	DisableChecks bool   `toml:"disable_checks"`
+	CurrentCommit string `toml:"current_commit"`
+	RepoPath      string `toml:"repo_path"`
+	Terminal      string `toml:"terminal"`
+}
+
 // Config is the top-level configuration structure.
 type Config struct {
-	LLM   LLMConfig   `toml:"llm"`
-	Index IndexConfig `toml:"index"`
+	LLM     LLMConfig     `toml:"llm"`
+	Index   IndexConfig   `toml:"index"`
+	Updates UpdatesConfig `toml:"updates"`
 }
 
 // defaults returns a Config pre-filled with sensible defaults.
@@ -56,7 +67,18 @@ func defaults() Config {
 			AutoSummarise: true,
 			Concurrency:   2,
 		},
+		Updates: UpdatesConfig{
+			DisableChecks: false,
+			CurrentCommit: "",
+			RepoPath:      "",
+			Terminal:      "",
+		},
 	}
+}
+
+// Default returns a Config pre-filled with built-in defaults.
+func Default() Config {
+	return defaults()
 }
 
 // Load returns a Config by merging defaults → global → project-local.
@@ -83,13 +105,31 @@ func Load(projectRoot string) (Config, error) {
 	return cfg, nil
 }
 
+// ConfigDir returns the global lup configuration directory.
+func ConfigDir() string {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		home, herr := os.UserHomeDir()
+		if herr != nil {
+			return ""
+		}
+		return filepath.Join(home, ".config", "lup")
+	}
+	return filepath.Join(base, "lup")
+}
+
+// GlobalConfigPath returns the global lup configuration file path.
+func GlobalConfigPath() string {
+	return filepath.Join(ConfigDir(), "config.toml")
+}
+
 // globalConfigPath returns ~/.config/lup/config.toml.
 func globalConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	path := GlobalConfigPath()
+	if path == "" {
+		return "", errors.New("could not determine config directory")
 	}
-	return filepath.Join(home, ".config", "lup", "config.toml"), nil
+	return path, nil
 }
 
 // mergeFile decodes a TOML file into dst, overwriting only fields that are
@@ -116,6 +156,87 @@ func EnsureProjectDir(projectRoot string) error {
 		}
 	}
 	return nil
+}
+
+// RecordUpdateMetadata stores the installed commit and source repo path in the
+// global config without changing project-local settings.
+func RecordUpdateMetadata(commit, repoPath string) error {
+	cfg := defaults()
+	path := GlobalConfigPath()
+	if err := mergeFile(&cfg, path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if commit != "" {
+		cfg.Updates.CurrentCommit = commit
+	}
+	if repoPath != "" {
+		cfg.Updates.RepoPath = repoPath
+	}
+	if err := os.MkdirAll(ConfigDir(), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(BuildTOML(cfg)), 0644)
+}
+
+// BuildTOML renders a complete config file with all current keys.
+func BuildTOML(cfg Config) string {
+	return fmt.Sprintf(`# LUP configuration file
+#
+# Copy to ~/.config/lup/config.toml for global settings, or to
+# <project>/.lup/config.toml for per-project overrides.
+#
+# Any field omitted here falls back to the built-in default.
+
+[llm]
+# Base URL of any OpenAI-compatible API server.
+# Ollama default:   http://localhost:11434/v1
+# LM Studio:        http://localhost:1234/v1
+# OpenAI:           https://api.openai.com/v1
+base_url = %s
+
+# Model used for file summarisation (chat completions).
+chat_model = %s
+
+# Model used for generating embeddings (must support /v1/embeddings).
+embed_model = %s
+
+# API key - leave empty for local servers that don't require auth.
+api_key = %s
+
+# HTTP timeout in seconds for a single LLM request.
+# Increase for slow hardware or large files.
+timeout_secs = %d
+
+[index]
+# Number of results returned by lup lookup.
+top_k = %d
+
+# When true, editor plugins should call lup summarise on file open.
+# This flag is read by the editor plugin, not enforced by the CLI.
+auto_summarise = %t
+
+# Parallel workers used by lup document.
+concurrency = %d
+
+[updates]
+# Disable explicit lup updates checks. No automatic startup prompts are shown.
+disable_checks = %t
+
+# Installed app commit, maintained by lup updates.
+current_commit = %s
+
+# Source checkout used for git-based updates.
+repo_path = %s
+
+# Optional terminal command for detached update installs.
+terminal = %s
+`, quote(cfg.LLM.BaseURL), quote(cfg.LLM.ChatModel), quote(cfg.LLM.EmbedModel), quote(cfg.LLM.APIKey), cfg.LLM.TimeoutSecs, cfg.Index.TopK, cfg.Index.AutoSummarise, cfg.Index.Concurrency, cfg.Updates.DisableChecks, quote(cfg.Updates.CurrentCommit), quote(cfg.Updates.RepoPath), quote(cfg.Updates.Terminal))
+}
+
+func quote(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return `"` + s + `"`
 }
 
 // ProjectRoot walks up from startDir looking for a .lup/ directory. If none

@@ -104,7 +104,7 @@ build_from_source() {
   (
     cd "$src_dir"
     go build \
-      -ldflags="-s -w -X main.version=$version -X main.buildTime=$buildtime" \
+      -ldflags="-s -w -X github.com/wingitman/lup/internal/version.Commit=$version -X github.com/wingitman/lup/internal/version.BuildTime=$buildtime" \
       -o "$TMP_DIR/$BINARY" \
       .
   )
@@ -180,6 +180,13 @@ timeout_secs = 120
 [index]
 top_k          = 5
 auto_summarise = true
+concurrency    = 2
+
+[updates]
+disable_checks = false
+current_commit = ""
+repo_path      = ""
+terminal       = ""
 EOF
     success "Minimal config installed → $CONFIG_FILE"
   fi

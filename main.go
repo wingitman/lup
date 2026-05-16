@@ -19,28 +19,41 @@ import (
 	"github.com/wingitman/lup/internal/parser"
 	"github.com/wingitman/lup/internal/rag"
 	"github.com/wingitman/lup/internal/store"
+	appupdate "github.com/wingitman/lup/internal/update"
+	appversion "github.com/wingitman/lup/internal/version"
 )
 
 var outputJSON bool
 
-var (
-	version   = "dev"
-	buildTime = "unknown"
-)
-
 func main() {
+	var recordUpdate bool
+	var updateCommit string
+	var updateRepo string
+
 	root := &cobra.Command{
 		Use:     "lup",
 		Short:   "LUP — look up your codebase with AI-powered summaries",
-		Version: version + " (built " + buildTime + ")",
+		Version: appversion.Commit + " (built " + appversion.BuildTime + ")",
 		Long: `LUP parses source files, summarises every symbol with an LLM, and indexes
 them so you can look up any variable, function, or concept and understand what
 it does, where it's used, and what similar symbols exist.
 
 All commands write to stdout and exit cleanly — safe to call from editor plugins.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if recordUpdate {
+				return config.RecordUpdateMetadata(updateCommit, updateRepo)
+			}
+			return cmd.Help()
+		},
 	}
 
 	root.PersistentFlags().BoolVar(&outputJSON, "json", false, "emit JSON output")
+	root.PersistentFlags().BoolVar(&recordUpdate, "record-update", false, "record installed update metadata and exit")
+	root.PersistentFlags().StringVar(&updateCommit, "update-commit", "", "commit to record with --record-update")
+	root.PersistentFlags().StringVar(&updateRepo, "update-repo", "", "repo path to record with --record-update")
+	_ = root.PersistentFlags().MarkHidden("record-update")
+	_ = root.PersistentFlags().MarkHidden("update-commit")
+	_ = root.PersistentFlags().MarkHidden("update-repo")
 
 	root.AddCommand(
 		summariseCmd(),
@@ -49,6 +62,8 @@ All commands write to stdout and exit cleanly — safe to call from editor plugi
 		indexCmd(),
 		configCmd(),
 		statusCmd(),
+		updatesCmd(),
+		recordUpdateCmd(),
 	)
 
 	if err := root.Execute(); err != nil {
@@ -138,9 +153,9 @@ func summariseCmd() *cobra.Command {
 // ──────────────────────────────────────────────────────────
 
 func lookupCmd() *cobra.Command {
-	var topK      int
-	var context   string
-	var showAll   bool
+	var topK int
+	var context string
+	var showAll bool
 
 	cmd := &cobra.Command{
 		Use:   "lookup <text>",
@@ -271,7 +286,7 @@ var dirSkipList = map[string]bool{
 }
 
 func documentCmd() *cobra.Command {
-	var force       bool
+	var force bool
 	var concurrency int
 
 	cmd := &cobra.Command{
@@ -584,6 +599,11 @@ func configCmd() *cobra.Command {
 			fmt.Printf("  top_k          = %d\n", cfg.Index.TopK)
 			fmt.Printf("  auto_summarise = %v\n", cfg.Index.AutoSummarise)
 			fmt.Printf("  concurrency    = %d\n", cfg.Index.Concurrency)
+			fmt.Printf("\n[updates]\n")
+			fmt.Printf("  disable_checks = %v\n", cfg.Updates.DisableChecks)
+			fmt.Printf("  current_commit = %s\n", cfg.Updates.CurrentCommit)
+			fmt.Printf("  repo_path      = %s\n", cfg.Updates.RepoPath)
+			fmt.Printf("  terminal       = %s\n", cfg.Updates.Terminal)
 			fmt.Printf("\n[project]\n")
 			fmt.Printf("  root = %s\n", projectRoot)
 			return nil
@@ -644,6 +664,160 @@ func statusCmd() *cobra.Command {
 }
 
 // ──────────────────────────────────────────────────────────
+// lup updates
+// ──────────────────────────────────────────────────────────
+
+func updatesCmd() *cobra.Command {
+	var check bool
+	var install bool
+	var commit string
+	var historyLimit int
+
+	cmd := &cobra.Command{
+		Use:   "updates",
+		Short: "Show update status or launch a detached git-based installer",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load("")
+			if err != nil {
+				return err
+			}
+
+			if commit != "" {
+				install = true
+			}
+			checkCfg := cfg
+			if install {
+				checkCfg.Updates.DisableChecks = false
+			}
+
+			info := appupdate.Check(&checkCfg, appversion.Commit, historyLimit)
+			if !install {
+				if outputJSON {
+					return printJSON(info)
+				}
+				if check {
+					printUpdateCheck(info)
+				} else {
+					printUpdateStatus(info)
+				}
+				return nil
+			}
+
+			if info.RepoPath == "" {
+				return fmt.Errorf("update repo unavailable: %s", info.CheckError)
+			}
+			target := commit
+			latest := target == ""
+			if latest {
+				target = info.LatestCommit
+			}
+			if target == "" {
+				return fmt.Errorf("could not resolve update target")
+			}
+			recorder, _ := os.Executable()
+			req := appupdate.InstallRequest{
+				RepoPath:       info.RepoPath,
+				TargetCommit:   target,
+				Latest:         latest,
+				Terminal:       cfg.Updates.Terminal,
+				RecorderBinary: recorder,
+			}
+			if err := appupdate.LaunchDetached(req); err != nil {
+				return err
+			}
+			if outputJSON {
+				return printJSON(map[string]interface{}{
+					"launched":      true,
+					"repo_path":     info.RepoPath,
+					"target_commit": target,
+					"latest":        latest,
+				})
+			}
+			printInfo(fmt.Sprintf("update installer launched for %s", shortCommit(target)))
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&check, "check", false, "check for available updates and exit")
+	cmd.Flags().BoolVar(&install, "install", false, "launch a detached terminal to install the latest update")
+	cmd.Flags().StringVar(&commit, "commit", "", "install a specific commit, including older versions")
+	cmd.Flags().IntVar(&historyLimit, "history", 12, "number of commits to show")
+	return cmd
+}
+
+func recordUpdateCmd() *cobra.Command {
+	var commit string
+	var repo string
+	cmd := &cobra.Command{
+		Use:    "record-update",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return config.RecordUpdateMetadata(commit, repo)
+		},
+	}
+	cmd.Flags().StringVar(&commit, "commit", "", "commit to record")
+	cmd.Flags().StringVar(&repo, "repo", "", "repo path to record")
+	return cmd
+}
+
+func printUpdateCheck(info appupdate.Info) {
+	if !info.UpdatesEnabled {
+		printInfo("update checks disabled")
+		return
+	}
+	if info.CheckError != "" {
+		printInfo("update check failed: " + info.CheckError)
+		return
+	}
+	if len(info.Available) > 0 {
+		printInfo(fmt.Sprintf("updates available: %d commit%s (current %s, latest %s)", len(info.Available), pluralS(len(info.Available)), shortCommit(info.CurrentCommit), shortCommit(info.LatestCommit)))
+		return
+	}
+	printInfo("up to date: " + shortCommit(info.CurrentCommit))
+}
+
+func printUpdateStatus(info appupdate.Info) {
+	if !info.UpdatesEnabled {
+		printInfo("update checks disabled")
+		return
+	}
+	if info.CheckError != "" {
+		printInfo("update check failed: " + info.CheckError)
+		return
+	}
+	fmt.Printf("repo:     %s\n", info.RepoPath)
+	fmt.Printf("branch:   %s\n", info.Branch)
+	fmt.Printf("upstream: %s\n", info.Upstream)
+	fmt.Printf("current:  %s\n", shortCommit(info.CurrentCommit))
+	fmt.Printf("latest:   %s\n", shortCommit(info.LatestCommit))
+	if len(info.Available) > 0 {
+		fmt.Printf("status:   %d update%s available\n", len(info.Available), pluralS(len(info.Available)))
+		fmt.Println("\navailable:")
+		for _, c := range info.Available {
+			fmt.Printf("  %s  %s  %s\n", c.Short, c.Date, c.Subject)
+		}
+	} else {
+		fmt.Println("status:   up to date")
+	}
+	if len(info.History) > 0 {
+		fmt.Println("\nhistory:")
+		for _, c := range info.History {
+			fmt.Printf("  %s  %s  %s\n", c.Short, c.Date, c.Subject)
+		}
+	}
+}
+
+func shortCommit(hash string) string {
+	if len(hash) > 12 {
+		return hash[:12]
+	}
+	if hash == "" {
+		return "unknown"
+	}
+	return hash
+}
+
+// ──────────────────────────────────────────────────────────
 // LLM summarisation
 // ──────────────────────────────────────────────────────────
 
@@ -678,8 +852,8 @@ Respond ONLY with valid JSON matching this schema exactly:
 Do not add any text outside the JSON object.`
 
 type llmSummaryResponse struct {
-	FileSummary string                  `json:"file_summary"`
-	Symbols     []store.SymbolSummary   `json:"symbols"`
+	FileSummary string                `json:"file_summary"`
+	Symbols     []store.SymbolSummary `json:"symbols"`
 }
 
 func summariseFile(ctx gocontext.Context, client *llm.Client, relPath string, parsed *parser.File) (store.FileSummary, error) {

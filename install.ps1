@@ -15,7 +15,8 @@
 
 [CmdletBinding()]
 param(
-    [string]$InstallDir = "$env:USERPROFILE\.local\bin"
+    [string]$InstallDir = "$env:USERPROFILE\.local\bin",
+    [switch]$Update
 )
 
 Set-StrictMode -Version Latest
@@ -83,9 +84,9 @@ function Build-FromSource {
     Push-Location $srcDir
     try {
         & go build `
-            -ldflags="-s -w -X main.version=$version -X main.buildTime=$buildTime" `
+            -ldflags="-s -w -X github.com/wingitman/lup/internal/version.Commit=$version -X github.com/wingitman/lup/internal/version.BuildTime=$buildTime" `
             -o $outPath `
-            .\cmd\lup
+            .
         if ($LASTEXITCODE -ne 0) { Write-Fail "go build failed." }
     } finally {
         Pop-Location
@@ -164,6 +165,13 @@ timeout_secs = 120
 [index]
 top_k          = 5
 auto_summarise = true
+concurrency    = 2
+
+[updates]
+disable_checks = false
+current_commit = ""
+repo_path      = ""
+terminal       = ""
 '@ | Set-Content -Path $ConfigFile -Encoding UTF8
     }
 
