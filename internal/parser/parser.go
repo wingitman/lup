@@ -1,20 +1,16 @@
-// Package parser uses tree-sitter to extract symbols (functions, methods,
-// variables, constants, classes, structs, etc.) from source files, returning
-// a language-agnostic list the summariser passes to the LLM.
+// Package parser extracts named symbols from source files, returning a
+// language-agnostic list the summariser passes to the LLM.
 package parser
 
 import (
-	"context"
 	"fmt"
+	"go/ast"
+	goparser "go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
-
-	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/golang"
-	"github.com/smacker/go-tree-sitter/javascript"
-	"github.com/smacker/go-tree-sitter/python"
-	"github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
 // symbolStoplist contains names that are too generic to be worth indexing
@@ -55,221 +51,14 @@ type File struct {
 	Symbols []Symbol `json:"symbols"`
 }
 
-// ──────────────────────────────────────────────────────────
-// Language registry
-// ──────────────────────────────────────────────────────────
-
-type langDef struct {
-	lang    *sitter.Language
-	queries []query
+type rawSymbol struct {
+	kind      string
+	name      string
+	signature string
+	body      string
+	startLine uint32
+	endLine   uint32
 }
-
-type query struct {
-	pattern     string
-	kind        string
-	nameCapture string
-	bodyCapture string
-	// skipIfFuncValue: when true, skip this match if the value is an arrow
-	// function or function expression (those are already caught by the
-	// function queries).
-	skipIfFuncValue bool
-}
-
-var registry map[string]langDef
-
-func init() {
-	registry = map[string]langDef{
-		// ── Go ──────────────────────────────────────────────────────────────
-		"go": {
-			lang: golang.GetLanguage(),
-			queries: []query{
-				// Functions and methods
-				{
-					pattern:     `(function_declaration name: (identifier) @name) @body`,
-					kind:        "function",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(method_declaration name: (field_identifier) @name) @body`,
-					kind:        "method",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Types
-				{
-					pattern:     `(type_declaration (type_spec name: (type_identifier) @name type: (struct_type))) @body`,
-					kind:        "struct",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(type_declaration (type_spec name: (type_identifier) @name type: (interface_type))) @body`,
-					kind:        "interface",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Package-level variables and constants
-				{
-					pattern:     `(var_declaration (var_spec name: (identifier) @name)) @body`,
-					kind:        "variable",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(const_declaration (const_spec name: (identifier) @name)) @body`,
-					kind:        "constant",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Short variable declarations inside functions (:=)
-				{
-					pattern:     `(short_var_declaration left: (expression_list (identifier) @name)) @body`,
-					kind:        "variable",
-					nameCapture: "name", bodyCapture: "body",
-				},
-			},
-		},
-
-		// ── Python ──────────────────────────────────────────────────────────
-		"python": {
-			lang: python.GetLanguage(),
-			queries: []query{
-				// Functions and classes
-				{
-					pattern:     `(function_definition name: (identifier) @name) @body`,
-					kind:        "function",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(class_definition name: (identifier) @name) @body`,
-					kind:        "class",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Module-level assignments
-				{
-					pattern:     `(module (expression_statement (assignment left: (identifier) @name))) @body`,
-					kind:        "variable",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Class-level variable assignments (class variables)
-				{
-					pattern:     `(class_definition body: (block (expression_statement (assignment left: (identifier) @name)) @body))`,
-					kind:        "variable",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Instance attribute assignments (self.x = ...)
-				{
-					pattern:     `(assignment left: (attribute object: (identifier) attribute: (identifier) @name)) @body`,
-					kind:        "attribute",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Function-level assignments
-				{
-					pattern:     `(function_definition body: (block (expression_statement (assignment left: (identifier) @name)) @body))`,
-					kind:        "variable",
-					nameCapture: "name", bodyCapture: "body",
-				},
-			},
-		},
-
-		// ── JavaScript ──────────────────────────────────────────────────────
-		"javascript": {
-			lang: javascript.GetLanguage(),
-			queries: []query{
-				{
-					pattern:     `(function_declaration name: (identifier) @name) @body`,
-					kind:        "function",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(method_definition name: (property_identifier) @name) @body`,
-					kind:        "method",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(class_declaration name: (identifier) @name) @body`,
-					kind:        "class",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Arrow / const functions (already covered, not variable)
-				{
-					pattern:     `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression)])) @body`,
-					kind:        "function",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// const/let declarations that are NOT functions
-				{
-					pattern:          `(lexical_declaration (variable_declarator name: (identifier) @name)) @body`,
-					kind:             "variable",
-					nameCapture:      "name", bodyCapture: "body",
-					skipIfFuncValue:  true,
-				},
-				// var declarations
-				{
-					pattern:          `(variable_declaration (variable_declarator name: (identifier) @name)) @body`,
-					kind:             "variable",
-					nameCapture:      "name", bodyCapture: "body",
-					skipIfFuncValue:  true,
-				},
-			},
-		},
-
-		// ── TypeScript ──────────────────────────────────────────────────────
-		"typescript": {
-			lang: typescript.GetLanguage(),
-			queries: []query{
-				{
-					pattern:     `(function_declaration name: (identifier) @name) @body`,
-					kind:        "function",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(method_definition name: (property_identifier) @name) @body`,
-					kind:        "method",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(class_declaration name: (type_identifier) @name) @body`,
-					kind:        "class",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				{
-					pattern:     `(interface_declaration name: (type_identifier) @name) @body`,
-					kind:        "interface",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// Arrow / const functions
-				{
-					pattern:     `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression)])) @body`,
-					kind:        "function",
-					nameCapture: "name", bodyCapture: "body",
-				},
-				// const/let non-function declarations
-				{
-					pattern:         `(lexical_declaration (variable_declarator name: (identifier) @name)) @body`,
-					kind:            "variable",
-					nameCapture:     "name", bodyCapture: "body",
-					skipIfFuncValue: true,
-				},
-				// var declarations
-				{
-					pattern:         `(variable_declaration (variable_declarator name: (identifier) @name)) @body`,
-					kind:            "variable",
-					nameCapture:     "name", bodyCapture: "body",
-					skipIfFuncValue: true,
-				},
-				// Class property fields
-				{
-					pattern:     `(public_field_definition name: (property_identifier) @name) @body`,
-					kind:        "attribute",
-					nameCapture: "name", bodyCapture: "body",
-				},
-			},
-		},
-	}
-
-	registry["tsx"] = registry["typescript"]
-	registry["jsx"] = registry["javascript"]
-}
-
-// ──────────────────────────────────────────────────────────
-// Public API
-// ──────────────────────────────────────────────────────────
 
 // ParseFile reads the file at path, detects its language, and extracts all
 // symbols including variables and constants.
@@ -283,23 +72,18 @@ func ParseFile(path string) (*File, error) {
 
 // ParseBytes parses already-loaded source bytes.
 func ParseBytes(path string, src []byte) (*File, error) {
-	// Tree-sitter languages.
-	if lang, langName, ok := detectLang(path); ok {
-		p := sitter.NewParser()
-		p.SetLanguage(lang.lang)
-		tree, err := p.ParseCtx(context.Background(), nil, src)
-		if err != nil {
-			return nil, fmt.Errorf("parser: parse %s: %w", path, err)
-		}
-		defer tree.Close()
-		return &File{
-			Path:    path,
-			Lang:    langName,
-			Symbols: extractAndDedup(tree.RootNode(), src, lang),
-		}, nil
+	lang := detectLang(path)
+	switch lang {
+	case "go":
+		return &File{Path: path, Lang: lang, Symbols: parseGo(path, src)}, nil
+	case "python":
+		return &File{Path: path, Lang: lang, Symbols: parsePython(src)}, nil
+	case "javascript", "jsx":
+		return &File{Path: path, Lang: lang, Symbols: parseJavaScript(src, false)}, nil
+	case "typescript", "tsx":
+		return &File{Path: path, Lang: lang, Symbols: parseJavaScript(src, true)}, nil
 	}
 
-	// Plain-text fallback.
 	if langName, ok := isPlainText(path); ok {
 		return &File{
 			Path:    path,
@@ -331,14 +115,23 @@ var plainTextExts = map[string]bool{
 	"json": true, "md": true, "markdown": true,
 }
 
-// ──────────────────────────────────────────────────────────
-// Internal helpers
-// ──────────────────────────────────────────────────────────
-
-func detectLang(path string) (langDef, string, bool) {
+func detectLang(path string) string {
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
-	def, ok := registry[ext]
-	return def, ext, ok
+	switch ext {
+	case "go", "py", "js", "jsx", "ts", "tsx":
+		if ext == "py" {
+			return "python"
+		}
+		if ext == "js" {
+			return "javascript"
+		}
+		if ext == "ts" {
+			return "typescript"
+		}
+		return ext
+	default:
+		return ""
+	}
 }
 
 func isPlainText(path string) (string, bool) {
@@ -353,119 +146,214 @@ func isPlainText(path string) (string, bool) {
 	return "", false
 }
 
-// extractAndDedup runs all queries for the language, applies the stoplist,
-// then collapses duplicate names (same symbol name appearing in multiple
-// scopes) into a single Symbol with OccurrenceCount > 1.
-func extractAndDedup(root *sitter.Node, src []byte, def langDef) []Symbol {
-	// raw: all matches before dedup
-	type rawEntry struct {
-		kind      string
-		name      string
-		signature string
-		body      string
-		startLine uint32
-		endLine   uint32
+func parseGo(path string, src []byte) []Symbol {
+	fset := token.NewFileSet()
+	file, err := goparser.ParseFile(fset, path, src, 0)
+	if err != nil || file == nil {
+		return chunkPlainText(src)
 	}
-	var raw []rawEntry
 
-	// Track which names we've emitted from "high-priority" kinds (functions,
-	// methods, structs, classes, interfaces) so we don't override them with
-	// a variable of the same name.
-	highPriority := map[string]bool{}
+	lines := splitLines(string(src))
+	var raw []rawSymbol
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.FuncDecl:
+			kind := "function"
+			if node.Recv != nil {
+				kind = "method"
+			}
+			raw = append(raw, rawFromNode(fset, lines, kind, node.Name.Name, node))
+			return true
+		case *ast.GenDecl:
+			for _, spec := range node.Specs {
+				switch s := spec.(type) {
+				case *ast.TypeSpec:
+					kind := "variable"
+					switch s.Type.(type) {
+					case *ast.StructType:
+						kind = "struct"
+					case *ast.InterfaceType:
+						kind = "interface"
+					}
+					raw = append(raw, rawFromNode(fset, lines, kind, s.Name.Name, node))
+				case *ast.ValueSpec:
+					kind := "variable"
+					if node.Tok == token.CONST {
+						kind = "constant"
+					}
+					for _, name := range s.Names {
+						raw = append(raw, rawFromNode(fset, lines, kind, name.Name, node))
+					}
+				}
+			}
+			return false
+		case *ast.AssignStmt:
+			if node.Tok != token.DEFINE {
+				return true
+			}
+			for _, lhs := range node.Lhs {
+				if ident, ok := lhs.(*ast.Ident); ok {
+					raw = append(raw, rawFromNode(fset, lines, "variable", ident.Name, node))
+				}
+			}
+		}
+		return true
+	})
+
+	return dedupRaw(raw)
+}
+
+func rawFromNode(fset *token.FileSet, lines []string, kind, name string, node ast.Node) rawSymbol {
+	start := fset.Position(node.Pos()).Line
+	end := fset.Position(node.End()).Line
+	body := bodyFromLines(lines, start, end)
+	return rawSymbol{
+		kind:      kind,
+		name:      name,
+		signature: firstLine(body),
+		body:      body,
+		startLine: uint32(start),
+		endLine:   uint32(end),
+	}
+}
+
+var (
+	pyFuncRe      = regexp.MustCompile(`^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(`)
+	pyClassRe     = regexp.MustCompile(`^\s*class\s+([A-Za-z_]\w*)\b`)
+	pyAssignRe    = regexp.MustCompile(`^\s*([A-Za-z_]\w*)\s*(?::[^=]+)?=`)
+	pyAttributeRe = regexp.MustCompile(`^\s*self\.([A-Za-z_]\w*)\s*=`)
+	jsFunctionRe  = regexp.MustCompile(`^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(`)
+	jsClassRe     = regexp.MustCompile(`^\s*(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_$][\w$]*)\b`)
+	jsInterfaceRe = regexp.MustCompile(`^\s*(?:export\s+)?interface\s+([A-Za-z_$][\w$]*)\b`)
+	jsVarRe       = regexp.MustCompile(`^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\b`)
+	jsFuncValueRe = regexp.MustCompile(`=>|\bfunction\b`)
+	jsMethodRe    = regexp.MustCompile(`^\s*(?:public\s+|private\s+|protected\s+|static\s+|async\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*[{:]?`)
+	jsTypeAliasRe = regexp.MustCompile(`^\s*(?:export\s+)?type\s+([A-Za-z_$][\w$]*)\b`)
+	jsKeywords    = map[string]bool{"if": true, "for": true, "while": true, "switch": true, "catch": true, "function": true}
+)
+
+func parsePython(src []byte) []Symbol {
+	lines := splitLines(string(src))
+	var raw []rawSymbol
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		indent := leadingSpaces(line)
+		if m := pyFuncRe.FindStringSubmatch(line); m != nil {
+			raw = append(raw, rawFromRange(lines, "function", m[1], i+1, pythonBlockEnd(lines, i, indent)))
+			continue
+		}
+		if m := pyClassRe.FindStringSubmatch(line); m != nil {
+			raw = append(raw, rawFromRange(lines, "class", m[1], i+1, pythonBlockEnd(lines, i, indent)))
+			continue
+		}
+		if m := pyAttributeRe.FindStringSubmatch(line); m != nil {
+			raw = append(raw, rawFromRange(lines, "attribute", m[1], i+1, i+1))
+			continue
+		}
+		if m := pyAssignRe.FindStringSubmatch(line); m != nil {
+			raw = append(raw, rawFromRange(lines, "variable", m[1], i+1, i+1))
+		}
+	}
+	return dedupRaw(raw)
+}
+
+func parseJavaScript(src []byte, typescript bool) []Symbol {
+	lines := splitLines(string(src))
+	var raw []rawSymbol
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if m := jsFunctionRe.FindStringSubmatch(line); m != nil {
+			raw = append(raw, rawFromRange(lines, "function", m[1], i+1, braceBlockEnd(lines, i)))
+			continue
+		}
+		if m := jsClassRe.FindStringSubmatch(line); m != nil {
+			raw = append(raw, rawFromRange(lines, "class", m[1], i+1, braceBlockEnd(lines, i)))
+			continue
+		}
+		if typescript {
+			if m := jsInterfaceRe.FindStringSubmatch(line); m != nil {
+				raw = append(raw, rawFromRange(lines, "interface", m[1], i+1, braceBlockEnd(lines, i)))
+				continue
+			}
+			if m := jsTypeAliasRe.FindStringSubmatch(line); m != nil {
+				raw = append(raw, rawFromRange(lines, "interface", m[1], i+1, braceBlockEnd(lines, i)))
+				continue
+			}
+		}
+		if m := jsVarRe.FindStringSubmatch(line); m != nil {
+			kind := "variable"
+			if jsFuncValueRe.MatchString(line) {
+				kind = "function"
+			}
+			raw = append(raw, rawFromRange(lines, kind, m[1], i+1, braceBlockEnd(lines, i)))
+			continue
+		}
+		if m := jsMethodRe.FindStringSubmatch(line); m != nil && !jsKeywords[m[1]] {
+			raw = append(raw, rawFromRange(lines, "method", m[1], i+1, braceBlockEnd(lines, i)))
+		}
+	}
+	return dedupRaw(raw)
+}
+
+func rawFromRange(lines []string, kind, name string, start, end int) rawSymbol {
+	body := bodyFromLines(lines, start, end)
+	return rawSymbol{
+		kind:      kind,
+		name:      name,
+		signature: firstLine(body),
+		body:      body,
+		startLine: uint32(start),
+		endLine:   uint32(end),
+	}
+}
+
+func dedupRaw(raw []rawSymbol) []Symbol {
 	highKinds := map[string]bool{
 		"function": true, "method": true, "struct": true,
 		"class": true, "interface": true,
 	}
-
-	for _, q := range def.queries {
-		tsQuery, err := sitter.NewQuery([]byte(q.pattern), def.lang)
-		if err != nil {
-			continue
-		}
-
-		cursor := sitter.NewQueryCursor()
-		cursor.Exec(tsQuery, root)
-
-		for {
-			match, ok := cursor.NextMatch()
-			if !ok {
-				break
-			}
-
-			var nameNode, bodyNode *sitter.Node
-			for _, capture := range match.Captures {
-				capName := tsQuery.CaptureNameForId(capture.Index)
-				switch capName {
-				case q.nameCapture:
-					nameNode = capture.Node
-				case q.bodyCapture:
-					bodyNode = capture.Node
-				}
-			}
-			if nameNode == nil || bodyNode == nil {
-				continue
-			}
-
-			name := nameNode.Content(src)
-
-			// Stoplist check.
-			if symbolStoplist[name] {
-				continue
-			}
-
-			// For skipIfFuncValue queries: check if the body contains a
-			// function/arrow value and skip if so (already indexed by
-			// the function query).
-			if q.skipIfFuncValue && bodyContainsFuncValue(bodyNode) {
-				continue
-			}
-
-			body := bodyNode.Content(src)
-			entry := rawEntry{
-				kind:      q.kind,
-				name:      name,
-				signature: firstLine(body),
-				body:      body,
-				startLine: bodyNode.StartPoint().Row + 1,
-				endLine:   bodyNode.EndPoint().Row + 1,
-			}
-			raw = append(raw, entry)
-
-			if highKinds[q.kind] {
-				highPriority[name] = true
-			}
+	highPriority := map[string]bool{}
+	for _, e := range raw {
+		if highKinds[e.kind] && !symbolStoplist[e.name] {
+			highPriority[e.name] = true
 		}
 	}
 
-	// Dedup: group by name, collapse occurrences.
 	type group struct {
-		first rawEntry
+		first rawSymbol
 		count int
 	}
 	groups := map[string]*group{}
-	order := []string{} // preserve first-seen order
+	var order []string
 
 	for _, e := range raw {
-		// Skip variable/constant/attribute if a function/struct/class of the
-		// same name was already seen — the structural symbol is more informative.
-		if (e.kind == "variable" || e.kind == "constant" || e.kind == "attribute") &&
-			highPriority[e.name] {
+		if e.name == "" || symbolStoplist[e.name] {
 			continue
 		}
-
+		if (e.kind == "variable" || e.kind == "constant" || e.kind == "attribute") && highPriority[e.name] {
+			continue
+		}
 		if g, exists := groups[e.name]; exists {
 			g.count++
-			// Keep the entry with the higher-priority kind if kinds differ.
 			if highKinds[e.kind] && !highKinds[g.first.kind] {
 				g.first = e
 			}
-		} else {
-			groups[e.name] = &group{first: e, count: 1}
-			order = append(order, e.name)
+			continue
 		}
+		groups[e.name] = &group{first: e, count: 1}
+		order = append(order, e.name)
 	}
 
-	var symbols []Symbol
+	symbols := make([]Symbol, 0, len(order))
 	for _, name := range order {
 		g := groups[name]
 		symbols = append(symbols, Symbol{
@@ -478,34 +366,88 @@ func extractAndDedup(root *sitter.Node, src []byte, def langDef) []Symbol {
 			OccurrenceCount: g.count,
 		})
 	}
-
 	return symbols
 }
 
-// bodyContainsFuncValue reports whether a node's text contains an arrow
-// function or function expression value — used to skip variable declarations
-// that are actually function aliases.
-func bodyContainsFuncValue(node *sitter.Node) bool {
-	for i := 0; i < int(node.ChildCount()); i++ {
-		child := node.Child(i)
-		t := child.Type()
-		if t == "arrow_function" || t == "function_expression" ||
-			t == "function" || t == "generator_function" {
-			return true
+func pythonBlockEnd(lines []string, start, indent int) int {
+	end := start + 1
+	for i := start + 1; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			end = i + 1
+			continue
 		}
-		// Recurse one level into variable_declarator.
-		if t == "variable_declarator" {
-			for j := 0; j < int(child.ChildCount()); j++ {
-				grandchild := child.Child(j)
-				gt := grandchild.Type()
-				if gt == "arrow_function" || gt == "function_expression" ||
-					gt == "function" || gt == "generator_function" {
-					return true
+		if leadingSpaces(lines[i]) <= indent {
+			break
+		}
+		end = i + 1
+	}
+	return end
+}
+
+func braceBlockEnd(lines []string, start int) int {
+	depth := 0
+	seenBrace := false
+	for i := start; i < len(lines); i++ {
+		for _, r := range lines[i] {
+			switch r {
+			case '{', '(', '[':
+				depth++
+				seenBrace = true
+			case '}', ')', ']':
+				if depth > 0 {
+					depth--
 				}
 			}
 		}
+		if seenBrace && depth == 0 {
+			return i + 1
+		}
+		if i == start && !seenBrace {
+			return start + 1
+		}
+		if !seenBrace && strings.HasSuffix(strings.TrimSpace(lines[i]), ";") {
+			return i + 1
+		}
 	}
-	return false
+	return start + 1
+}
+
+func leadingSpaces(s string) int {
+	count := 0
+	for _, r := range s {
+		switch r {
+		case ' ':
+			count++
+		case '\t':
+			count += 4
+		default:
+			return count
+		}
+	}
+	return count
+}
+
+func splitLines(s string) []string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.Split(s, "\n")
+}
+
+func bodyFromLines(lines []string, start, end int) string {
+	if start < 1 {
+		start = 1
+	}
+	if end < start {
+		end = start
+	}
+	if start > len(lines) {
+		return ""
+	}
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return strings.Join(lines[start-1:end], "\n")
 }
 
 // firstLine returns the first non-empty line of s, truncated to 200 chars.
@@ -516,7 +458,7 @@ func firstLine(s string) string {
 			continue
 		}
 		if len(line) > 200 {
-			return line[:200] + "…"
+			return line[:200] + "..."
 		}
 		return line
 	}
@@ -528,7 +470,7 @@ func chunkPlainText(src []byte) []Symbol {
 	const chunkSize = 40
 	const overlap = 5
 
-	lines := strings.Split(string(src), "\n")
+	lines := splitLines(string(src))
 	var symbols []Symbol
 
 	for start := 0; start < len(lines); start += chunkSize - overlap {

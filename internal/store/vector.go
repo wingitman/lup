@@ -1,130 +1,132 @@
 package store
 
 import (
-	"database/sql"
-	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
-
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
-	_ "github.com/mattn/go-sqlite3"
+	"sort"
+	"sync"
 )
 
-func init() {
-	sqlite_vec.Auto()
-}
+const vectorIndexVersion = 1
 
-// VectorStore wraps the sqlite-vec database for symbol-level embeddings and
-// the cross-symbol reference index.
+// VectorStore stores symbol-level embeddings and cross-symbol references in a
+// small project-local JSON index.
 type VectorStore struct {
-	db  *sql.DB
-	dim int
+	mu sync.Mutex
+
+	path string
+	dim  int
+	data vectorIndex
 }
 
-// OpenVectorStore opens (or creates) the sqlite-vec database at
-// <projectRoot>/.lup/index.db.
+type vectorIndex struct {
+	Version    int                `json:"version"`
+	Dim        int                `json:"dim"`
+	NextID     int64              `json:"next_id"`
+	Symbols    []indexedSymbol    `json:"symbols"`
+	References []indexedReference `json:"references"`
+}
+
+type indexedSymbol struct {
+	ID         int64     `json:"id"`
+	FilePath   string    `json:"file_path"`
+	SymbolName string    `json:"symbol_name"`
+	SymbolKind string    `json:"symbol_kind"`
+	StartLine  int       `json:"start_line"`
+	EndLine    int       `json:"end_line"`
+	Embedding  []float32 `json:"embedding"`
+}
+
+type indexedReference struct {
+	FromFile   string `json:"from_file"`
+	FromSymbol string `json:"from_symbol"`
+	ToName     string `json:"to_name"`
+}
+
+// OpenVectorStore opens (or creates) the vector index at
+// <projectRoot>/.lup/index.json.
 func OpenVectorStore(projectRoot string) (*VectorStore, error) {
 	dir := filepath.Join(projectRoot, ".lup")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("vector store: mkdir %s: %w", dir, err)
 	}
 
-	path := filepath.Join(dir, "index.db")
-	// Single connection: sqlite-vec knn queries require the k= constraint and
-	// the embedding MATCH to run on the same connection-level query planner pass.
-	db, err := sql.Open("sqlite3", path)
-	if err != nil {
-		return nil, fmt.Errorf("vector store: open %s: %w", path, err)
+	vs := &VectorStore{
+		path: filepath.Join(dir, "index.json"),
+		data: vectorIndex{Version: vectorIndexVersion, NextID: 1},
 	}
-	db.SetMaxOpenConns(1)
-
-	vs := &VectorStore{db: db}
-	if err := vs.migrate(); err != nil {
-		db.Close()
+	if err := vs.load(); err != nil {
 		return nil, err
+	}
+	vs.dim = vs.data.Dim
+	if vs.data.Version == 0 {
+		vs.data.Version = vectorIndexVersion
+	}
+	if vs.data.NextID < 1 {
+		vs.data.NextID = nextSymbolID(vs.data.Symbols)
 	}
 	return vs, nil
 }
 
-// Close releases the database connection.
+// Close releases store resources. The JSON-backed store has no open handles.
 func (vs *VectorStore) Close() error {
-	return vs.db.Close()
-}
-
-// ──────────────────────────────────────────────────────────
-// Schema migration
-// ──────────────────────────────────────────────────────────
-
-func (vs *VectorStore) migrate() error {
-	// Metadata: stores embedding dimension.
-	if _, err := vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_meta (
-		key   TEXT PRIMARY KEY,
-		value TEXT NOT NULL
-	)`); err != nil {
-		return fmt.Errorf("vector store: migrate meta: %w", err)
-	}
-
-	// Symbol registry: one row per indexed symbol (including synthetic
-	// "__file__" rows for file-level embeddings).
-	if _, err := vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_symbols (
-		id          INTEGER PRIMARY KEY AUTOINCREMENT,
-		file_path   TEXT    NOT NULL,
-		symbol_name TEXT    NOT NULL,
-		symbol_kind TEXT    NOT NULL,
-		start_line  INTEGER NOT NULL DEFAULT 0,
-		end_line    INTEGER NOT NULL DEFAULT 0,
-		UNIQUE(file_path, symbol_name, start_line)
-	)`); err != nil {
-		return fmt.Errorf("vector store: migrate symbols: %w", err)
-	}
-
-	// Reference map: "symbol (from_file, from_symbol) uses symbol named to_name".
-	// Indexed on to_name for O(1) reverse lookup.
-	if _, err := vs.db.Exec(`CREATE TABLE IF NOT EXISTS lup_references (
-		id          INTEGER PRIMARY KEY AUTOINCREMENT,
-		from_file   TEXT NOT NULL,
-		from_symbol TEXT NOT NULL,
-		to_name     TEXT NOT NULL
-	)`); err != nil {
-		return fmt.Errorf("vector store: migrate references: %w", err)
-	}
-	if _, err := vs.db.Exec(`CREATE INDEX IF NOT EXISTS idx_lup_references_to
-		ON lup_references(to_name)`); err != nil {
-		return fmt.Errorf("vector store: migrate references index: %w", err)
-	}
-
-	// Load stored embedding dimension.
-	var dimStr string
-	if err := vs.db.QueryRow(`SELECT value FROM lup_meta WHERE key='dim'`).Scan(&dimStr); err == nil {
-		var d int
-		fmt.Sscan(dimStr, &d)
-		if d > 0 {
-			vs.dim = d
-			return vs.ensureVecTable()
-		}
-	}
 	return nil
 }
 
-func (vs *VectorStore) ensureVecTable() error {
-	if vs.dim == 0 {
+func (vs *VectorStore) load() error {
+	data, err := os.ReadFile(vs.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("vector store: read %s: %w", vs.path, err)
+	}
+	if len(data) == 0 {
 		return nil
 	}
-	_, err := vs.db.Exec(fmt.Sprintf(
-		`CREATE VIRTUAL TABLE IF NOT EXISTS lup_vec USING vec0(embedding float[%d])`,
-		vs.dim,
-	))
-	if err != nil {
-		return fmt.Errorf("vector store: create vec table: %w", err)
+	if err := json.Unmarshal(data, &vs.data); err != nil {
+		return fmt.Errorf("vector store: decode %s: %w", vs.path, err)
 	}
 	return nil
 }
 
-// ──────────────────────────────────────────────────────────
-// Upsert
-// ──────────────────────────────────────────────────────────
+func (vs *VectorStore) saveLocked() error {
+	if err := os.MkdirAll(filepath.Dir(vs.path), 0o755); err != nil {
+		return fmt.Errorf("vector store: mkdir: %w", err)
+	}
+
+	vs.data.Version = vectorIndexVersion
+	vs.data.Dim = vs.dim
+	if vs.data.NextID < 1 {
+		vs.data.NextID = nextSymbolID(vs.data.Symbols)
+	}
+
+	data, err := json.MarshalIndent(vs.data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("vector store: encode: %w", err)
+	}
+	tmp := vs.path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("vector store: write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, vs.path); err != nil {
+		return fmt.Errorf("vector store: replace %s: %w", vs.path, err)
+	}
+	return nil
+}
+
+func nextSymbolID(symbols []indexedSymbol) int64 {
+	var maxID int64
+	for _, sym := range symbols {
+		if sym.ID > maxID {
+			maxID = sym.ID
+		}
+	}
+	return maxID + 1
+}
 
 // UpsertSymbol stores or replaces an embedding for a single symbol.
 // symbolName "__file__" is the conventional key for a file-level embedding.
@@ -133,70 +135,59 @@ func (vs *VectorStore) UpsertSymbol(
 	startLine, endLine int,
 	embedding []float32,
 ) error {
-	if err := vs.ensureDim(len(embedding)); err != nil {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+
+	if err := vs.ensureDimLocked(len(embedding)); err != nil {
 		return err
 	}
 
-	tx, err := vs.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Upsert the symbol row.
-	res, err := tx.Exec(`
-		INSERT INTO lup_symbols(file_path, symbol_name, symbol_kind, start_line, end_line)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(file_path, symbol_name, start_line)
-		DO UPDATE SET symbol_kind=excluded.symbol_kind, end_line=excluded.end_line`,
-		filePath, symbolName, symbolKind, startLine, endLine,
-	)
-	if err != nil {
-		return fmt.Errorf("vector store upsert symbol: %w", err)
-	}
-
-	rowID, err := res.LastInsertId()
-	if err != nil || rowID == 0 {
-		if err2 := tx.QueryRow(
-			`SELECT id FROM lup_symbols WHERE file_path=? AND symbol_name=? AND start_line=?`,
-			filePath, symbolName, startLine,
-		).Scan(&rowID); err2 != nil {
-			return fmt.Errorf("vector store upsert rowid: %w", err2)
+	for i := range vs.data.Symbols {
+		sym := &vs.data.Symbols[i]
+		if sym.FilePath == filePath && sym.SymbolName == symbolName && sym.StartLine == startLine {
+			sym.SymbolKind = symbolKind
+			sym.EndLine = endLine
+			sym.Embedding = cloneFloat32s(embedding)
+			return vs.saveLocked()
 		}
 	}
 
-	blob := serializeFloat32(embedding)
-	tx.Exec(`DELETE FROM lup_vec WHERE rowid=?`, rowID)
-	if _, err := tx.Exec(`INSERT INTO lup_vec(rowid, embedding) VALUES (?, ?)`, rowID, blob); err != nil {
-		return fmt.Errorf("vector store upsert vec: %w", err)
-	}
-
-	return tx.Commit()
+	vs.data.Symbols = append(vs.data.Symbols, indexedSymbol{
+		ID:         vs.data.NextID,
+		FilePath:   filePath,
+		SymbolName: symbolName,
+		SymbolKind: symbolKind,
+		StartLine:  startLine,
+		EndLine:    endLine,
+		Embedding:  cloneFloat32s(embedding),
+	})
+	vs.data.NextID++
+	return vs.saveLocked()
 }
 
 // ReplaceReferences replaces all reference rows for a given file.
 // Called during IndexSummary with the full set of references extracted by the LLM.
 func (vs *VectorStore) ReplaceReferences(filePath string, refs []Reference) error {
-	tx, err := vs.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
 
-	if _, err := tx.Exec(`DELETE FROM lup_references WHERE from_file=?`, filePath); err != nil {
-		return fmt.Errorf("vector store replace refs delete: %w", err)
-	}
-
-	for _, r := range refs {
-		if _, err := tx.Exec(
-			`INSERT INTO lup_references(from_file, from_symbol, to_name) VALUES (?, ?, ?)`,
-			filePath, r.FromSymbol, r.ToName,
-		); err != nil {
-			return fmt.Errorf("vector store insert ref: %w", err)
+	kept := vs.data.References[:0]
+	for _, ref := range vs.data.References {
+		if ref.FromFile != filePath {
+			kept = append(kept, ref)
 		}
 	}
+	vs.data.References = kept
 
-	return tx.Commit()
+	for _, r := range refs {
+		vs.data.References = append(vs.data.References, indexedReference{
+			FromFile:   filePath,
+			FromSymbol: r.FromSymbol,
+			ToName:     r.ToName,
+		})
+	}
+
+	return vs.saveLocked()
 }
 
 // Reference is a directed edge: symbol FromSymbol in file FromFile uses ToName.
@@ -205,11 +196,7 @@ type Reference struct {
 	ToName     string
 }
 
-// ──────────────────────────────────────────────────────────
-// Search
-// ──────────────────────────────────────────────────────────
-
-// SearchResult is a single ANN search result.
+// SearchResult is a single vector search result.
 type SearchResult struct {
 	FilePath   string
 	SymbolName string
@@ -221,153 +208,118 @@ type SearchResult struct {
 
 // Search returns the topK nearest symbol embeddings to query.
 func (vs *VectorStore) Search(query []float32, topK int) ([]SearchResult, error) {
-	if vs.dim == 0 {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+
+	if vs.dim == 0 || topK <= 0 || len(vs.data.Symbols) == 0 {
 		return nil, nil
 	}
-
-	tx, err := vs.db.Begin()
-	if err != nil {
-		return nil, fmt.Errorf("vector store search begin: %w", err)
-	}
-	defer tx.Rollback()
-
-	var rowCount int
-	tx.QueryRow(`SELECT COUNT(*) FROM lup_symbols`).Scan(&rowCount)
-	if rowCount == 0 {
-		return nil, nil
-	}
-	if topK > rowCount {
-		topK = rowCount
+	if len(query) != vs.dim {
+		return nil, fmt.Errorf("vector store: embedding dimension mismatch: want %d, got %d", vs.dim, len(query))
 	}
 
-	blob := serializeFloat32(query)
-
-	rows, err := tx.Query(`
-		SELECT s.file_path, s.symbol_name, s.symbol_kind, s.start_line, s.end_line, v.distance
-		FROM (
-			SELECT rowid, distance
-			FROM lup_vec
-			WHERE embedding MATCH ?
-			  AND k = ?
-			ORDER BY distance
-		) v
-		JOIN lup_symbols s ON s.id = v.rowid
-	`, blob, topK)
-	if err != nil {
-		return nil, fmt.Errorf("vector store search: %w", err)
-	}
-
-	var results []SearchResult
-	for rows.Next() {
-		var r SearchResult
-		if err := rows.Scan(&r.FilePath, &r.SymbolName, &r.SymbolKind, &r.StartLine, &r.EndLine, &r.Distance); err != nil {
-			rows.Close()
-			return nil, err
+	results := make([]SearchResult, 0, len(vs.data.Symbols))
+	for _, sym := range vs.data.Symbols {
+		if len(sym.Embedding) != vs.dim {
+			continue
 		}
-		results = append(results, r)
+		results = append(results, SearchResult{
+			FilePath:   sym.FilePath,
+			SymbolName: sym.SymbolName,
+			SymbolKind: sym.SymbolKind,
+			StartLine:  sym.StartLine,
+			EndLine:    sym.EndLine,
+			Distance:   squaredL2(query, sym.Embedding),
+		})
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Distance == results[j].Distance {
+			return resultLess(results[i], results[j])
+		}
+		return results[i].Distance < results[j].Distance
+	})
+	if topK > len(results) {
+		topK = len(results)
 	}
-	rows.Close()
-	tx.Commit()
-	return results, nil
+	return cloneResults(results[:topK]), nil
 }
 
 // FindByName returns all indexed symbols with the given name (Type A usages).
 // These are files where symbolName is a declared/assigned symbol in its own right.
 func (vs *VectorStore) FindByName(name string) ([]SearchResult, error) {
-	rows, err := vs.db.Query(`
-		SELECT file_path, symbol_name, symbol_kind, start_line, end_line
-		FROM lup_symbols
-		WHERE symbol_name = ? AND symbol_kind != 'file'
-		ORDER BY file_path, start_line
-	`, name)
-	if err != nil {
-		return nil, fmt.Errorf("vector store find by name: %w", err)
-	}
-	defer rows.Close()
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
 
 	var results []SearchResult
-	for rows.Next() {
-		var r SearchResult
-		if err := rows.Scan(&r.FilePath, &r.SymbolName, &r.SymbolKind, &r.StartLine, &r.EndLine); err != nil {
-			return nil, err
+	for _, sym := range vs.data.Symbols {
+		if sym.SymbolName == name && sym.SymbolKind != "file" {
+			results = append(results, symbolResult(sym, 0))
 		}
-		results = append(results, r)
 	}
-	return results, rows.Err()
+	sortResults(results)
+	return results, nil
 }
 
 // FindReferencers returns all symbols that reference the given name (Type B usages).
 // These are symbols where the LLM noted they use/call/depend on name.
-// O(1) via the index on lup_references.to_name.
 func (vs *VectorStore) FindReferencers(name string) ([]SearchResult, error) {
-	rows, err := vs.db.Query(`
-		SELECT DISTINCT s.file_path, s.symbol_name, s.symbol_kind, s.start_line, s.end_line
-		FROM lup_references r
-		JOIN lup_symbols s
-		  ON s.file_path = r.from_file AND s.symbol_name = r.from_symbol
-		WHERE r.to_name = ?
-		ORDER BY s.file_path, s.start_line
-	`, name)
-	if err != nil {
-		return nil, fmt.Errorf("vector store find referencers: %w", err)
-	}
-	defer rows.Close()
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
 
+	seen := make(map[string]bool)
 	var results []SearchResult
-	for rows.Next() {
-		var r SearchResult
-		if err := rows.Scan(&r.FilePath, &r.SymbolName, &r.SymbolKind, &r.StartLine, &r.EndLine); err != nil {
-			return nil, err
+	for _, ref := range vs.data.References {
+		if ref.ToName != name {
+			continue
 		}
-		results = append(results, r)
+		for _, sym := range vs.data.Symbols {
+			if sym.FilePath != ref.FromFile || sym.SymbolName != ref.FromSymbol {
+				continue
+			}
+			key := fmt.Sprintf("%s\x00%s\x00%d", sym.FilePath, sym.SymbolName, sym.StartLine)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			results = append(results, symbolResult(sym, 0))
+		}
 	}
-	return results, rows.Err()
+	sortResults(results)
+	return results, nil
 }
 
 // DeleteFile removes all vectors, symbol rows, and reference rows for filePath.
 func (vs *VectorStore) DeleteFile(filePath string) error {
-	tx, err := vs.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
 
-	// Collect rowids to delete from lup_vec.
-	rows, err := tx.Query(`SELECT id FROM lup_symbols WHERE file_path=?`, filePath)
-	if err != nil {
-		return err
+	symbols := vs.data.Symbols[:0]
+	for _, sym := range vs.data.Symbols {
+		if sym.FilePath != filePath {
+			symbols = append(symbols, sym)
+		}
 	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		rows.Scan(&id)
-		ids = append(ids, id)
-	}
-	rows.Close()
+	vs.data.Symbols = symbols
 
-	for _, id := range ids {
-		tx.Exec(`DELETE FROM lup_vec WHERE rowid=?`, id)
+	refs := vs.data.References[:0]
+	for _, ref := range vs.data.References {
+		if ref.FromFile != filePath {
+			refs = append(refs, ref)
+		}
 	}
-	tx.Exec(`DELETE FROM lup_symbols WHERE file_path=?`, filePath)
-	tx.Exec(`DELETE FROM lup_references WHERE from_file=?`, filePath)
+	vs.data.References = refs
 
-	return tx.Commit()
+	return vs.saveLocked()
 }
 
-// ──────────────────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────────────────
-
-func (vs *VectorStore) ensureDim(dim int) error {
+func (vs *VectorStore) ensureDimLocked(dim int) error {
+	if dim == 0 {
+		return fmt.Errorf("vector store: empty embedding")
+	}
 	if vs.dim == 0 {
 		vs.dim = dim
-		vs.db.Exec(`INSERT OR REPLACE INTO lup_meta(key, value) VALUES ('dim', ?)`,
-			fmt.Sprintf("%d", dim))
-		return vs.ensureVecTable()
+		return nil
 	}
 	if vs.dim != dim {
 		return fmt.Errorf("vector store: embedding dimension mismatch: want %d, got %d", vs.dim, dim)
@@ -375,10 +327,53 @@ func (vs *VectorStore) ensureDim(dim int) error {
 	return nil
 }
 
-func serializeFloat32(v []float32) []byte {
-	b := make([]byte, len(v)*4)
-	for i, f := range v {
-		binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(f))
+func squaredL2(a, b []float32) float64 {
+	var sum float64
+	for i := range a {
+		d := float64(a[i] - b[i])
+		sum += d * d
 	}
-	return b
+	if math.IsNaN(sum) || math.IsInf(sum, 0) {
+		return math.MaxFloat64
+	}
+	return sum
+}
+
+func cloneFloat32s(in []float32) []float32 {
+	out := make([]float32, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneResults(in []SearchResult) []SearchResult {
+	out := make([]SearchResult, len(in))
+	copy(out, in)
+	return out
+}
+
+func symbolResult(sym indexedSymbol, distance float64) SearchResult {
+	return SearchResult{
+		FilePath:   sym.FilePath,
+		SymbolName: sym.SymbolName,
+		SymbolKind: sym.SymbolKind,
+		StartLine:  sym.StartLine,
+		EndLine:    sym.EndLine,
+		Distance:   distance,
+	}
+}
+
+func sortResults(results []SearchResult) {
+	sort.Slice(results, func(i, j int) bool {
+		return resultLess(results[i], results[j])
+	})
+}
+
+func resultLess(a, b SearchResult) bool {
+	if a.FilePath != b.FilePath {
+		return a.FilePath < b.FilePath
+	}
+	if a.StartLine != b.StartLine {
+		return a.StartLine < b.StartLine
+	}
+	return a.SymbolName < b.SymbolName
 }
