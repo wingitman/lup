@@ -19,6 +19,7 @@ LDFLAGS    := -s -w \
 # Installation directory — defaults to ~/.local/bin (no sudo needed).
 # Override: make install INSTALL_DIR=/usr/local/bin
 INSTALL_DIR ?= $(HOME)/.local/bin
+RELEASES_DIR := releases
 
 # Config template destination
 CONFIG_DIR  := $(HOME)/.config/lup
@@ -40,11 +41,40 @@ build:
 # Install
 # ──────────────────────────────────────────────────────────
 
+.PHONY: build-all
+build-all:
+	@mkdir -p $(RELEASES_DIR)/linux/amd64 $(RELEASES_DIR)/linux/arm64 $(RELEASES_DIR)/darwin/amd64 $(RELEASES_DIR)/darwin/arm64 $(RELEASES_DIR)/windows
+	@echo "  linux/amd64"
+	GOOS=linux   GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(RELEASES_DIR)/linux/amd64/$(BINARY) $(CMD)
+	@echo "  linux/arm64"
+	GOOS=linux   GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(RELEASES_DIR)/linux/arm64/$(BINARY) $(CMD)
+	@echo "  darwin/amd64"
+	GOOS=darwin  GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(RELEASES_DIR)/darwin/amd64/$(BINARY) $(CMD)
+	@echo "  darwin/arm64"
+	GOOS=darwin  GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(RELEASES_DIR)/darwin/arm64/$(BINARY) $(CMD)
+	@echo "  windows/amd64"
+	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(RELEASES_DIR)/windows/$(BINARY).exe $(CMD)
+	@echo "Pre-built binaries written to $(RELEASES_DIR)/"
+
 .PHONY: install
-install: build
+install:
 	@echo "› installing $(BINARY) to $(INSTALL_DIR)"
 	@mkdir -p $(INSTALL_DIR)
-	cp $(BINARY) $(INSTALL_DIR)/$(BINARY)
+	@if command -v go >/dev/null 2>&1; then \
+		echo "==> Go found - building lup from source..."; \
+		go build -ldflags="$(LDFLAGS)" -o $(BINARY) $(CMD) || exit 1; \
+		cp $(BINARY) $(INSTALL_DIR)/$(BINARY); \
+		echo "    Built and installed from source."; \
+	else \
+		echo "==> Go not found - installing pre-built binary from releases/..."; \
+		OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
+		ARCH=$$(uname -m); \
+		case "$$ARCH" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) echo "ERROR: Unsupported architecture: $$ARCH"; exit 1 ;; esac; \
+		if [ "$$OS" = "darwin" ]; then RELEASE_BIN="$(RELEASES_DIR)/darwin/$$ARCH/$(BINARY)"; elif [ "$$OS" = "linux" ]; then RELEASE_BIN="$(RELEASES_DIR)/linux/$$ARCH/$(BINARY)"; else echo "ERROR: Unsupported OS: $$OS"; exit 1; fi; \
+		if [ ! -f "$$RELEASE_BIN" ]; then echo "ERROR: Pre-built binary not found at $$RELEASE_BIN"; echo "       Please install Go (https://go.dev/dl/) and re-run, or ask a developer to run 'make build-all' and commit the releases/ folder."; exit 1; fi; \
+		cp "$$RELEASE_BIN" $(INSTALL_DIR)/$(BINARY); \
+		echo "    Installed pre-built binary."; \
+	fi
 	@chmod +x $(INSTALL_DIR)/$(BINARY)
 	@echo "  installed → $(INSTALL_DIR)/$(BINARY)"
 	@$(MAKE) --no-print-directory install-config

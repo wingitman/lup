@@ -2,49 +2,94 @@
 #
 # Copy to ~/.config/lup/config.toml for global settings, or to
 # <project>/.lup/config.toml for per-project overrides.
-#
-# Any field omitted here falls back to the built-in default.
+
+[active]
+# Generator profile used by lup tui, lup summarise, and lup document.
+agent = "local"
+level = "medium" # low, medium, high, xhigh
 
 [llm]
-# Base URL of any OpenAI-compatible API server.
-# Ollama default:   http://localhost:11434/v1
-# LM Studio:        http://localhost:1234/v1
-# OpenAI:           https://api.openai.com/v1
+# Backward-compatible OpenAI-compatible settings used by lookup/index embeddings.
 base_url = "http://localhost:11434/v1"
-
-# Model used for file summarisation (chat completions).
 chat_model = "qwen2.5-coder:7b"
-
-# Model used for generating embeddings (must support /v1/embeddings).
 embed_model = "nomic-embed-text"
-
-# API key — leave empty for local servers that don't require auth.
 api_key = ""
-
-# HTTP timeout in seconds for a single LLM request.
-# Increase for slow hardware or large files.
 timeout_secs = 120
 
+[agents.local]
+# Ollama, vLLM, LM Studio, OpenAI-compatible gateways.
+provider = "openai_compatible"
+base_url = "http://localhost:11434/v1"
+model = "qwen2.5-coder:7b"
+embed_model = "nomic-embed-text"
+api_key = ""
+api_key_env = ""
+timeout_secs = 120
+
+[agents.opencode_zen]
+# OpenCode Zen pay-as-you-go gateway. Set OPENCODE_API_KEY or api_key.
+provider = "opencode_zen"
+model = "opencode/gpt-5.5"
+api_key = ""
+api_key_env = "OPENCODE_API_KEY"
+timeout_secs = 120
+
+[agents.cursor]
+# Cursor Cloud Agent backend. Set CURSOR_API_KEY or api_key.
+provider = "cursor_agent"
+base_url = "https://api.cursor.com/v1"
+model = "composer-2"
+api_key = ""
+api_key_env = "CURSOR_API_KEY"
+timeout_secs = 600
+mode = "agent"
+
+[embedding]
+# Keep embeddings separate so agent-backed summarisation can still use local lookup/indexing.
+provider = "openai_compatible"
+base_url = "http://localhost:11434/v1"
+model = "nomic-embed-text"
+api_key = ""
+api_key_env = ""
+timeout_secs = 120
+
+[summarisation]
+query = "Summarise this document for lup. Return only the JSON object matching the schema."
+system_prompt = ""
+max_symbols_per_prompt = 25
+body_budget = 8000
+temperature = 0.20
+
+[apps]
+editor = ""
+opener = ""
+
+[keybinds]
+up = "up"
+down = "down"
+left = "left"
+right = "right"
+confirm = "enter"
+page_up = "pgup"
+page_down = "pgdown"
+jump_top = "home"
+jump_bottom = "end"
+quit = "q"
+edit = "e"
+options = "o"
+switch_agent = "m"
+switch_level = "l"
+regenerate = "r"
+show_hints = "?"
+show_updates = "U"
+
 [index]
-# Number of results returned by `lup lookup`.
 top_k = 5
-
-# When true, editor plugins should call `lup summarise` on file open.
-# This flag is read by the editor plugin, not enforced by the CLI.
 auto_summarise = true
-
-# Parallel workers used by `lup document`.
 concurrency = 2
 
 [updates]
-# Disable explicit `lup updates` checks. No automatic startup prompts are shown.
 disable_checks = false
-
-# Installed app commit, maintained by `lup updates`.
 current_commit = ""
-
-# Source checkout used for git-based updates.
 repo_path = ""
-
-# Optional terminal command for detached update installs.
 terminal = ""

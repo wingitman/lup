@@ -2,7 +2,7 @@
 
 AI-powered code documentation tool. Open a file, get a summary. Select a term, find where it lives across your codebase.
 
-lup parses source files with tree-sitter, summarises them with any OpenAI-compatible LLM, and indexes the results locally with sqlite-vec so you can do fast semantic lookups without sending your code anywhere you don't want it to go.
+lup parses source files, summarises them with local models, OpenAI-compatible APIs, OpenCode Zen, or Cursor Cloud Agents, and indexes the results locally so you can do fast semantic lookups without sending your code anywhere you don't want it to go.
 
 ---
 
@@ -90,8 +90,12 @@ go build -o lup .
 - An OpenAI-compatible API server — local or cloud:
   - [Ollama](https://ollama.com) (recommended for local use)
   - [LM Studio](https://lmstudio.ai)
+  - [vLLM](https://docs.vllm.ai)
   - [OpenAI](https://platform.openai.com)
   - Any server that speaks the `/v1/chat/completions` and `/v1/embeddings` API
+- Optional API keys for hosted/agent backends:
+  - `OPENCODE_API_KEY` for OpenCode Zen pay-as-you-go models
+  - `CURSOR_API_KEY` for Cursor Cloud Agents
 
 ---
 
@@ -106,6 +110,27 @@ chat_model  = "qwen2.5-coder:7b"          # model for summarisation
 embed_model = "nomic-embed-text"           # model for embeddings
 api_key     = ""                           # leave empty for local servers
 timeout_secs = 120
+
+[active]
+agent = "local"   # local, opencode_zen, cursor, or any custom [agents.*]
+level = "medium"  # low, medium, high, xhigh
+
+[agents.opencode_zen]
+provider = "opencode_zen"
+model = "opencode/gpt-5.5"
+api_key_env = "OPENCODE_API_KEY"
+
+[agents.cursor]
+provider = "cursor_agent"
+base_url = "https://api.cursor.com/v1"
+model = "composer-2"
+api_key_env = "CURSOR_API_KEY"
+timeout_secs = 600
+
+[embedding]
+provider = "openai_compatible"
+base_url = "http://localhost:11434/v1"
+model = "nomic-embed-text"
 
 [index]
 top_k          = 5     # results returned by `lup lookup`
@@ -134,9 +159,14 @@ ollama pull nomic-embed-text
 ## Commands
 
 ```
+lup tui <file>
+```
+Open the interactive TUI. The source document is shown on the left and the stored/generated lup summary on the right. Use `r` to regenerate, `m` to switch agent/model profile, `l` to cycle level, `e` to open the focused pane in your editor, `o` to edit project config, `U` for updates, and `?` for contextual hints.
+
+```
 lup summarise <file> [--force]
 ```
-Parse and summarise a source file. Stores the result in `.lup/`. Skips files already summarised unless `--force` is given.
+Parse and summarise a source file with the configured active agent. Stores the result in `.lup/`. Skips files already summarised unless `--force` is given.
 
 ```
 lup lookup <text> [-k N] [--json]
